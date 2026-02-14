@@ -27,8 +27,6 @@ FlatWiki ist ein modernes, durchsuchbares Flat-File-Wiki mit Login, Rollen, Admi
 
 ## Screenshot
 
-Lege deinen Screenshot als `screenshot.png` im Projekt-Root ab.
-
 ![FlatWiki Screenshot](./screenshot.png)
 
 ## Starten
