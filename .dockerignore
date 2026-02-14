@@ -1,0 +1,11 @@
+.git
+.gitignore
+node_modules
+dist
+.DS_Store
+config.env
+npm-debug.log*
+data/users.json
+data/sessions.json
+data/audit.log
+data/.DS_Store

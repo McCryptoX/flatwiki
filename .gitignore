@@ -1,0 +1,13 @@
+node_modules
+dist
+config.env
+.DS_Store
+# Runtime-Daten standardmäßig nicht versionieren
+data/*
+!data/wiki/
+data/wiki/*
+!data/wiki/Home.md
+!data/wiki/flatwiki-komplette-nutzung.md
+data/users.json
+data/sessions.json
+data/audit.log

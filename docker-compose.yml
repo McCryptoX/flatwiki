@@ -1,0 +1,11 @@
+services:
+  flatwiki:
+    build: .
+    container_name: flatwiki
+    restart: unless-stopped
+    env_file:
+      - ./config.env
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
