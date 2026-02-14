@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # FlatWiki
 
 FlatWiki ist ein modernes, durchsuchbares Flat-File-Wiki mit Login, Rollen, Admin-Benutzerverwaltung und Markdown-Seiten.
@@ -142,3 +143,6 @@ Topics:
 ├─ SECURITY.md
 └─ CONTRIBUTING.md
 ```
+=======
+# FlatWiki
+>>>>>>> d2b11d88bf6530cec5187134f3298b9f0e0f3562
