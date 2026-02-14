@@ -99,25 +99,6 @@ Optional:
 - `BOOTSTRAP_ADMIN_PASSWORD`
 - `WIKI_TITLE`
 
-## GitHub Upload Checkliste
-
-Vor öffentlichem Upload prüfen:
-
-1. `config.env` nicht committen (ist ignoriert).
-2. Laufzeitdaten nicht committen (`data/users.json`, `data/sessions.json`, `data/audit.log`).
-3. Keine Secrets in Commits/History.
-4. README + Lizenz + Security-Datei vorhanden.
-
-## GitHub About Vorschlag
-
-Description:
-
-`DSGVO-bewusstes Flat-File-Wiki mit Login, Rollen, Admin-Userverwaltung und Markdown-Speicherung.`
-
-Topics:
-
-`wiki`, `flat-file`, `markdown`, `fastify`, `typescript`, `self-hosted`, `docker`, `gdpr`
-
 ## Repository-Struktur
 
 ```txt
