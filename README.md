@@ -48,7 +48,7 @@ npm run build
 npm start
 ```
 
-### Option B: Docker (ohne npm auf macOS)
+### Option B: Docker
 
 Voraussetzungen: Docker Desktop
 
@@ -73,6 +73,13 @@ Aufruf:
 
 - [http://127.0.0.1:3000](http://127.0.0.1:3000)
 
+## Wichtige Hinweise
+
+- Bei Docker muss in `config.env` `HOST=0.0.0.0` gesetzt sein.
+- `BOOTSTRAP_ADMIN_PASSWORD` wird nur beim Erststart genutzt (wenn `data/users.json` leer ist).
+- `PASSWORD_PEPPER` nach dem ersten produktiven Start nicht mehr ändern, sonst funktionieren bestehende Passwörter nicht mehr.
+- `config.env` nie ins Repository committen.
+
 ## Erstes Admin-Konto
 
 Beim ersten Start wird ein Admin erstellt, wenn `data/users.json` leer ist.
@@ -83,6 +90,40 @@ Beim ersten Start wird ein Admin erstellt, wenn `data/users.json` leer ist.
   - sonst temporär im Server-Log
 
 Danach Passwort direkt ändern.
+
+### Admin-Passwort per CLI zurücksetzen (Docker)
+
+Wenn das Login nicht mehr funktioniert, kannst du das Admin-Passwort direkt neu setzen:
+
+```bash
+cd /pfad/zu/FlatWiki
+NEW_ADMIN_PASSWORD='DeinSicheresPasswort123!'
+docker compose exec -T -e NEW_ADMIN_PASSWORD="$NEW_ADMIN_PASSWORD" flatwiki node - <<'NODE'
+const fs = require('fs');
+const crypto = require('crypto');
+
+const usersPath = '/app/data/users.json';
+const username = 'admin';
+const newPassword = process.env.NEW_ADMIN_PASSWORD;
+const pepper = process.env.PASSWORD_PEPPER || '';
+const N = 1 << 14, R = 8, P = 1, KEYLEN = 64, MAX_MEM = 64 * 1024 * 1024;
+
+if (!newPassword) throw new Error('NEW_ADMIN_PASSWORD ist leer');
+
+const users = JSON.parse(fs.readFileSync(usersPath, 'utf8'));
+const user = users.find((u) => (u.username || '').toLowerCase() === username);
+if (!user) throw new Error('Admin-User nicht gefunden');
+
+const salt = crypto.randomBytes(16);
+crypto.scrypt(`${newPassword}${pepper}`, salt, KEYLEN, { cost: N, blockSize: R, parallelization: P, maxmem: MAX_MEM }, (err, dk) => {
+  if (err) throw err;
+  user.passwordHash = `scrypt$${N}$${R}$${P}$${salt.toString('base64')}$${Buffer.from(dk).toString('base64')}`;
+  user.updatedAt = new Date().toISOString();
+  fs.writeFileSync(usersPath, JSON.stringify(users, null, 2) + '\n');
+  console.log('Admin-Passwort neu gesetzt.');
+});
+NODE
+```
 
 ## Konfiguration
 
