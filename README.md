@@ -25,6 +25,7 @@ FlatWiki ist ein modernes, durchsuchbares Flat-File-Wiki mit Login, Rollen, Admi
 - Live-Vorschläge im Suchfeld während der Eingabe
 - Inhaltsverzeichnis (`/toc`)
 - Bild-Upload im Editor (1-x Dateien, automatische eindeutige Dateinamen)
+- Visueller Markdown-Editor (Toolbar + Live-Vorschau)
 - Automatische Artikel-Navigation (links) aus Markdown-Überschriften
 - Visueller Setup-Assistent beim ersten Start (`/setup`)
 - Sicherheitsgrundlagen: `scrypt`, CSRF, Rate-Limit, Security-Header, Audit-Log
@@ -210,7 +211,10 @@ Optional:
 - Pro Upload sind mehrere Dateien möglich (1-x).
 - Dateinamen werden automatisch in eindeutige Namen umbenannt.
 - Nach dem Upload werden die Markdown-Bildlinks automatisch in den Artikelinhalt eingefügt.
+- Toolbar für schnelle Formatierung (Überschriften, Listen, Links, Code, Tabelle).
+- Live-Vorschau im Editor per Button auf "Vorschau".
 - Überschriften (`##`, `###`, ...) erzeugen automatisch eine linke Artikel-Navigation.
+- Format-Hilfe als Wiki-Seite: `/wiki/markdown-formatierung-howto`
 
 ## Repository-Struktur
 

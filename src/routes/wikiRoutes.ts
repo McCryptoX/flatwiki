@@ -7,7 +7,17 @@ import { requireAdmin, requireAuth, verifySessionCsrfToken } from "../lib/auth.j
 import { writeAuditLog } from "../lib/audit.js";
 import { config } from "../config.js";
 import { escapeHtml, formatDate, renderLayout, renderPageList } from "../lib/render.js";
-import { deletePage, getPage, isValidSlug, listPages, savePage, searchPages, slugifyTitle, suggestPages } from "../lib/wikiStore.js";
+import {
+  deletePage,
+  getPage,
+  isValidSlug,
+  listPages,
+  renderMarkdownPreview,
+  savePage,
+  searchPages,
+  slugifyTitle,
+  suggestPages
+} from "../lib/wikiStore.js";
 
 const asRecord = (value: unknown): Record<string, string> => {
   if (!value || typeof value !== "object") return {};
@@ -106,7 +116,7 @@ const renderEditorForm = (params: {
   csrfToken: string;
   slugLocked?: boolean;
 }): string => `
-  <section class="content-wrap editor-shell">
+  <section class="content-wrap editor-shell" data-preview-endpoint="/api/markdown/preview" data-csrf="${escapeHtml(params.csrfToken)}">
     <h1>${params.mode === "new" ? "Neue Seite" : "Seite bearbeiten"}</h1>
     <div class="editor-grid">
       <form method="post" action="${escapeHtml(params.action)}" class="stack large">
@@ -120,9 +130,30 @@ const renderEditorForm = (params: {
         <label>Tags (kommagetrennt)
           <input type="text" name="tags" value="${escapeHtml(params.tags)}" />
         </label>
-        <label>Inhalt (Markdown)
-          <textarea name="content" rows="18" required>${escapeHtml(params.content)}</textarea>
-        </label>
+        <label>Inhalt (Markdown)</label>
+        <div class="editor-mode-row">
+          <div class="editor-toggle-group" role="tablist" aria-label="Editor-Ansicht">
+            <button type="button" class="tiny secondary is-active" data-editor-view-btn="write">Editor</button>
+            <button type="button" class="tiny secondary" data-editor-view-btn="preview">Vorschau</button>
+          </div>
+          <span class="muted-note small">Toolbar fügt Markdown direkt ein.</span>
+        </div>
+        <div class="editor-toolbar" role="toolbar" aria-label="Markdown-Werkzeuge">
+          <button type="button" class="tiny secondary" data-md-action="h2">H2</button>
+          <button type="button" class="tiny secondary" data-md-action="h3">H3</button>
+          <button type="button" class="tiny secondary" data-md-action="bold"><strong>B</strong></button>
+          <button type="button" class="tiny secondary" data-md-action="italic"><em>I</em></button>
+          <button type="button" class="tiny secondary" data-md-action="quote">Zitat</button>
+          <button type="button" class="tiny secondary" data-md-action="ul">Liste</button>
+          <button type="button" class="tiny secondary" data-md-action="ol">1.</button>
+          <button type="button" class="tiny secondary" data-md-action="code">Code</button>
+          <button type="button" class="tiny secondary" data-md-action="link">Link</button>
+          <button type="button" class="tiny secondary" data-md-action="table">Tabelle</button>
+        </div>
+        <textarea name="content" rows="18" required data-editor-textarea>${escapeHtml(params.content)}</textarea>
+        <section class="editor-preview" hidden aria-live="polite">
+          <p class="muted-note">Live-Vorschau wird geladen...</p>
+        </section>
         <button type="submit">${params.mode === "new" ? "Seite erstellen" : "Änderungen speichern"}</button>
       </form>
 
@@ -139,6 +170,8 @@ const renderEditorForm = (params: {
         </form>
         <p class="muted-note small">Nach dem Upload werden Markdown-Zeilen automatisch in den Inhalt eingefügt.</p>
         <textarea class="upload-markdown-output" rows="6" readonly placeholder="Upload-Ausgabe erscheint hier"></textarea>
+        <hr />
+        <p class="muted-note small"><a href="/wiki/markdown-formatierung-howto">Markdown-HowTo öffnen</a></p>
       </aside>
     </div>
   </section>
@@ -458,6 +491,25 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
       files: uploaded,
       markdown: uploaded.map((file) => file.markdown).join("\n"),
       rejected
+    });
+  });
+
+  app.post("/api/markdown/preview", { preHandler: [requireAuth] }, async (request, reply) => {
+    const payload = request.body && typeof request.body === "object" ? (request.body as Record<string, unknown>) : {};
+    const markdown = typeof payload.markdown === "string" ? payload.markdown : "";
+
+    const csrfHeader = request.headers["x-csrf-token"];
+    const csrfFromHeader = Array.isArray(csrfHeader) ? csrfHeader[0] ?? "" : csrfHeader ?? "";
+    const csrfFromBody = typeof payload._csrf === "string" ? payload._csrf : "";
+    const csrfValue = csrfFromHeader || csrfFromBody;
+
+    if (!verifySessionCsrfToken(request, csrfValue)) {
+      return reply.code(400).send({ ok: false, error: "Ungültiges CSRF-Token." });
+    }
+
+    return reply.send({
+      ok: true,
+      html: renderMarkdownPreview(markdown)
     });
   });
 

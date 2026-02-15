@@ -13,3 +13,4 @@ Dieses Wiki speichert Inhalte als **Markdown-Dateien** im Dateisystem.
 - Inhaltsverzeichnis über "Inhaltsverzeichnis" öffnen
 - Rechteverwaltung über den Admin-Bereich
 - Vollständige Anleitung: [FlatWiki - Komplette Nutzung](/wiki/flatwiki-komplette-nutzung)
+- Formatierungsleitfaden: [Markdown-Formatierung HowTo](/wiki/markdown-formatierung-howto)

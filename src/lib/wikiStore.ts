@@ -77,28 +77,7 @@ const collectHeadings = (content: string): WikiHeading[] => {
   });
 };
 
-const resolvePagePath = (slug: string): string => path.join(config.wikiDir, `${slug}.md`);
-
-const normalizeTags = (rawTags: unknown): string[] => {
-  if (!Array.isArray(rawTags)) return [];
-  return rawTags
-    .map((tag) => String(tag).trim().toLowerCase())
-    .filter((tag) => tag.length > 0)
-    .slice(0, 20);
-};
-
-const parseMarkdownPage = async (slug: string): Promise<WikiPage | null> => {
-  const source = await readTextFile(resolvePagePath(slug));
-  if (!source) return null;
-
-  const parsed = matter(source);
-  const data = parsed.data as Record<string, unknown>;
-  const title = String(data.title ?? slug).trim() || slug;
-  const tags = normalizeTags(data.tags);
-  const createdAt = String(data.createdAt ?? data.updatedAt ?? new Date().toISOString());
-  const updatedAt = String(data.updatedAt ?? createdAt);
-  const updatedBy = String(data.updatedBy ?? "unknown");
-  const content = parsed.content.trim();
+const renderMarkdownToHtmlWithAnchors = (content: string): { html: string; tableOfContents: WikiHeading[] } => {
   const tableOfContents = collectHeadings(content);
   const renderer = new marked.Renderer();
   let headingIndex = 0;
@@ -123,6 +102,36 @@ const parseMarkdownPage = async (slug: string): Promise<WikiPage | null> => {
 
   const rendered = marked.parse(content, { async: false, renderer });
   const html = toSafeHtml(typeof rendered === "string" ? rendered : "");
+
+  return {
+    html,
+    tableOfContents
+  };
+};
+
+const resolvePagePath = (slug: string): string => path.join(config.wikiDir, `${slug}.md`);
+
+const normalizeTags = (rawTags: unknown): string[] => {
+  if (!Array.isArray(rawTags)) return [];
+  return rawTags
+    .map((tag) => String(tag).trim().toLowerCase())
+    .filter((tag) => tag.length > 0)
+    .slice(0, 20);
+};
+
+const parseMarkdownPage = async (slug: string): Promise<WikiPage | null> => {
+  const source = await readTextFile(resolvePagePath(slug));
+  if (!source) return null;
+
+  const parsed = matter(source);
+  const data = parsed.data as Record<string, unknown>;
+  const title = String(data.title ?? slug).trim() || slug;
+  const tags = normalizeTags(data.tags);
+  const createdAt = String(data.createdAt ?? data.updatedAt ?? new Date().toISOString());
+  const updatedAt = String(data.updatedAt ?? createdAt);
+  const updatedBy = String(data.updatedBy ?? "unknown");
+  const content = parsed.content.trim();
+  const { html, tableOfContents } = renderMarkdownToHtmlWithAnchors(content);
 
   return {
     slug,
@@ -337,4 +346,13 @@ export const suggestPages = async (query: string, limit = 8): Promise<WikiPageSu
     .map((entry) => entry.page);
 
   return scored;
+};
+
+export const renderMarkdownPreview = (markdown: string): string => {
+  const content = markdown.trim();
+  if (!content) {
+    return "<p class=\"muted-note\">Noch keine Vorschau verfügbar.</p>";
+  }
+
+  return renderMarkdownToHtmlWithAnchors(content).html;
 };
