@@ -97,6 +97,12 @@
     const contentTextarea = editorShell.querySelector('[data-editor-textarea], textarea[name="content"]');
     const uploadForm = editorShell.querySelector(".image-upload-form");
     const output = editorShell.querySelector(".upload-markdown-output");
+    const visibilitySelect = editorShell.querySelector('select[name="visibility"]');
+    const allowedUsersBox = editorShell.querySelector("[data-allowed-users-box]");
+    const allowedUsersFilter = editorShell.querySelector("[data-allowed-users-filter]");
+    const allowedUsersCount = editorShell.querySelector("[data-allowed-users-count]");
+    const allowedUsersList = editorShell.querySelector("[data-allowed-users-list]");
+    const categorySelect = editorShell.querySelector('select[name="categoryId"]');
     const toolbarButtons = editorShell.querySelectorAll("[data-md-action]");
     const previewPanel = editorShell.querySelector(".editor-preview");
     const viewButtons = editorShell.querySelectorAll("[data-editor-view-btn]");
@@ -188,6 +194,36 @@
       }, 180);
     };
 
+    const syncAllowedUsersVisibility = () => {
+      if (!(visibilitySelect instanceof HTMLSelectElement) || !(allowedUsersBox instanceof HTMLElement)) return;
+      const restricted = visibilitySelect.value === "restricted";
+      allowedUsersBox.hidden = !restricted;
+    };
+
+    const applyAllowedUsersFilter = () => {
+      if (!(allowedUsersList instanceof HTMLElement)) return;
+
+      const labels = allowedUsersList.querySelectorAll("label[data-user-search]");
+      const term =
+        allowedUsersFilter instanceof HTMLInputElement ? allowedUsersFilter.value.trim().toLowerCase() : "";
+
+      for (const label of labels) {
+        if (!(label instanceof HTMLElement)) continue;
+        const haystack = (label.dataset.userSearch || "").toLowerCase();
+        const visible = term.length === 0 || haystack.includes(term);
+        label.hidden = !visible;
+      }
+    };
+
+    const syncAllowedUsersCount = () => {
+      if (!(allowedUsersList instanceof HTMLElement) || !(allowedUsersCount instanceof HTMLElement)) return;
+      const checkboxes = allowedUsersList.querySelectorAll('input[type="checkbox"][name="allowedUsers"]');
+      const allCount = checkboxes.length;
+      const selectedCount = allowedUsersList.querySelectorAll('input[type="checkbox"][name="allowedUsers"]:checked').length;
+      const visibleCount = allowedUsersList.querySelectorAll('label[data-user-search]:not([hidden])').length;
+      allowedUsersCount.textContent = `${selectedCount}/${allCount} ausgewählt, ${visibleCount} sichtbar`;
+    };
+
     for (const button of toolbarButtons) {
       if (!(button instanceof HTMLButtonElement)) continue;
       button.addEventListener("click", () => {
@@ -206,6 +242,32 @@
 
     contentTextarea.addEventListener("input", schedulePreview);
     setView("write");
+    syncAllowedUsersVisibility();
+    applyAllowedUsersFilter();
+    syncAllowedUsersCount();
+
+    if (visibilitySelect instanceof HTMLSelectElement) {
+      visibilitySelect.addEventListener("change", () => {
+        syncAllowedUsersVisibility();
+        syncAllowedUsersCount();
+      });
+    }
+
+    if (allowedUsersFilter instanceof HTMLInputElement) {
+      allowedUsersFilter.addEventListener("input", () => {
+        applyAllowedUsersFilter();
+        syncAllowedUsersCount();
+      });
+    }
+
+    if (allowedUsersList instanceof HTMLElement) {
+      allowedUsersList.addEventListener("change", (event) => {
+        const target = event.target;
+        if (target instanceof HTMLInputElement && target.name === "allowedUsers") {
+          syncAllowedUsersCount();
+        }
+      });
+    }
 
     if (uploadForm instanceof HTMLFormElement && output instanceof HTMLTextAreaElement) {
       uploadForm.addEventListener("submit", async (event) => {
@@ -225,7 +287,13 @@
         output.value = "Upload läuft...";
 
         try {
-          const response = await fetch(uploadEndpoint, {
+          let resolvedUploadEndpoint = uploadEndpoint;
+          if (categorySelect instanceof HTMLSelectElement && categorySelect.value.trim().length > 0) {
+            const separator = resolvedUploadEndpoint.includes("?") ? "&" : "?";
+            resolvedUploadEndpoint = `${resolvedUploadEndpoint}${separator}categoryId=${encodeURIComponent(categorySelect.value.trim())}`;
+          }
+
+          const response = await fetch(resolvedUploadEndpoint, {
             method: "POST",
             headers: {
               "x-csrf-token": csrfToken

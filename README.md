@@ -20,18 +20,28 @@ FlatWiki ist ein modernes, durchsuchbares Flat-File-Wiki mit Login, Rollen, Admi
   - Passwort-Reset
 - Benutzerkonto-Funktionen
   - eigenes Passwort ändern
-  - eigene Daten exportieren
+  - eigene Daten exportieren (inkl. eigener Artikelübersicht + Markdown-Speicherdump)
+  - Übersicht über selbst erstellte Artikel im Konto-Bereich
+- Kategorien (eine Kategorie pro Artikel)
+- Zugriff pro Artikel (`alle` oder `nur ausgewählte Benutzer`)
+- Optionale AES-256-Verschlüsselung pro Artikel
 - Volltextsuche
 - Live-Vorschläge im Suchfeld während der Eingabe
+- Pagination für Übersicht, Inhaltsverzeichnis und Suche
 - Inhaltsverzeichnis (`/toc`)
 - Bild-Upload im Editor (1-x Dateien, automatische eindeutige Dateinamen)
+- Kategoriebezogene Upload-Pfade (`/uploads/<kategorie-ordner>/...`)
 - Visueller Markdown-Editor (Toolbar + Live-Vorschau)
 - Automatische Artikel-Navigation (links) aus Markdown-Überschriften
 - Admin-Bildverwaltung mit Referenzprüfung (`/admin/media`)
   - zeigt pro Bild, ob es eingebunden ist und in welchen Artikeln
   - Scanner zum Löschen ungenutzter Bilder
   - optional erzwungenes Löschen auch bei aktiver Einbindung
+- Admin-Suchindex-Verwaltung (`/admin/index`)
+  - Suchindex-Datei manuell neu generieren
+  - Live-Fortschritt mit Progress-Balken
 - Beim Löschen eines Artikels: automatische Entfernung nicht mehr referenzierter Upload-Bilder
+- Admin-Kategorienverwaltung (`/admin/categories`)
 - Visueller Setup-Assistent beim ersten Start (`/setup`)
 - Sicherheitsgrundlagen: `scrypt`, CSRF, Rate-Limit, Security-Header, Audit-Log
 
@@ -139,8 +149,9 @@ docker compose up -d --build
 - Der erste Admin wird standardmäßig über den Setup-Assistenten (`/setup`) angelegt.
 - `BOOTSTRAP_ADMIN_PASSWORD` ist optional für Headless-Bootstrap und wird nur beim Erststart genutzt (wenn `data/users.json` leer ist).
 - `PASSWORD_PEPPER` nach dem ersten produktiven Start nicht mehr ändern, sonst funktionieren bestehende Passwörter nicht mehr.
+- `CONTENT_ENCRYPTION_KEY` nach produktivem Start nicht mehr ändern, sonst können bestehende verschlüsselte Artikel nicht mehr gelesen werden.
 - Keine Secrets committen. `config.env` bleibt lokal; nur `config.env.example` wird versioniert.
-- Uploads liegen in `data/uploads/` und werden als `/uploads/...` bereitgestellt.
+- Uploads liegen in `data/uploads/` (pro Kategorie in Unterordnern) und werden als `/uploads/...` bereitgestellt.
 
 ## Erstes Admin-Konto
 

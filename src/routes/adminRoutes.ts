@@ -1,6 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { requireAdmin, verifySessionCsrfToken } from "../lib/auth.js";
 import { writeAuditLog } from "../lib/audit.js";
+import { createCategory, listCategories, renameCategory } from "../lib/categoryStore.js";
+import {
+  getSearchIndexBuildStatus,
+  getSearchIndexInfo,
+  startSearchIndexRebuild
+} from "../lib/searchIndexStore.js";
 import {
   cleanupUnusedUploads,
   deleteUploadFile,
@@ -19,6 +25,7 @@ import {
 } from "../lib/userStore.js";
 import { validatePasswordStrength } from "../lib/password.js";
 import { deleteUserSessions } from "../lib/sessionStore.js";
+import { listPages } from "../lib/wikiStore.js";
 
 const asRecord = (value: unknown): Record<string, string> => {
   if (!value || typeof value !== "object") return {};
@@ -187,6 +194,114 @@ const renderMissingMediaReferences = (report: Awaited<ReturnType<typeof getUploa
   `;
 };
 
+const renderCategoriesTable = (
+  csrfToken: string,
+  categories: Awaited<ReturnType<typeof listCategories>>,
+  pageCountByCategory: Map<string, number>
+): string => {
+  if (categories.length < 1) {
+    return '<p class="empty">Keine Kategorien vorhanden.</p>';
+  }
+
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>ID</th>
+            <th>Upload-Ordner</th>
+            <th>Artikel</th>
+            <th>Aktion</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${categories
+            .map(
+              (category) => `
+                <tr>
+                  <td>${escapeHtml(category.name)}</td>
+                  <td><code>${escapeHtml(category.id)}</code></td>
+                  <td><code>${escapeHtml(category.uploadFolder)}</code></td>
+                  <td>${pageCountByCategory.get(category.id) ?? 0}</td>
+                  <td>
+                    <form method="post" action="/admin/categories/${escapeHtml(category.id)}/rename" class="action-row">
+                      <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}" />
+                      <input type="text" name="name" value="${escapeHtml(category.name)}" minlength="2" maxlength="80" required />
+                      <button type="submit" class="tiny secondary">Umbenennen</button>
+                    </form>
+                  </td>
+                </tr>
+              `
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+};
+
+const renderIndexManagement = (
+  csrfToken: string,
+  info: Awaited<ReturnType<typeof getSearchIndexInfo>>,
+  status: ReturnType<typeof getSearchIndexBuildStatus>
+): string => {
+  const percent = Number.isFinite(status.percent) ? Math.min(Math.max(status.percent, 0), 100) : 0;
+  const statusError = status.error ? escapeHtml(status.error) : "";
+  const stateLabel =
+    status.phase === "error"
+      ? "Fehler"
+      : status.running
+        ? "Läuft"
+        : status.phase === "done"
+          ? "Fertig"
+          : "Bereit";
+
+  return `
+    <section class="content-wrap stack large admin-index-shell" data-index-admin data-csrf="${escapeHtml(csrfToken)}">
+      <div class="admin-index-panel">
+        <h2>Aktueller Suchindex</h2>
+        <dl class="admin-index-meta">
+          <dt>Datei</dt>
+          <dd><code>${escapeHtml(info.indexFile)}</code></dd>
+          <dt>Vorhanden</dt>
+          <dd>${info.exists ? "Ja" : "Nein"}</dd>
+          <dt>Version</dt>
+          <dd>${info.version}</dd>
+          <dt>Einträge</dt>
+          <dd>${info.totalPages}</dd>
+          <dt>Dateigröße</dt>
+          <dd>${escapeHtml(formatFileSize(info.fileSizeBytes))}</dd>
+          <dt>Zuletzt generiert</dt>
+          <dd>${info.generatedAt ? escapeHtml(formatDate(info.generatedAt)) : "-"}</dd>
+        </dl>
+      </div>
+
+      <div class="admin-index-panel">
+        <h2>Index neu generieren</h2>
+        <p class="muted-note">Erstellt alle Suchindex-Dateien neu. Sinnvoll nach vielen Importen oder manuellen Dateisystem-Änderungen.</p>
+        <div class="action-row">
+          <button type="button" data-index-start ${status.running ? "disabled" : ""}>Neu aufbauen</button>
+        </div>
+
+        <div class="admin-index-progress">
+          <div class="admin-index-progress-head">
+            <strong data-index-state>${escapeHtml(stateLabel)}</strong>
+            <span data-index-percent>${percent}%</span>
+          </div>
+          <progress value="${percent}" max="100" data-index-progress></progress>
+          <p class="muted-note" data-index-message>${escapeHtml(status.message)}</p>
+          <p class="muted-note" data-index-time>
+            Start: ${status.startedAt ? escapeHtml(formatDate(status.startedAt)) : "-"} |
+            Ende: ${status.finishedAt ? escapeHtml(formatDate(status.finishedAt)) : "-"}
+          </p>
+          <p class="admin-index-error" data-index-error ${statusError ? "" : "hidden"}>${statusError}</p>
+        </div>
+      </div>
+    </section>
+  `;
+};
+
 export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> => {
   app.get("/admin/users", { preHandler: [requireAdmin] }, async (request, reply) => {
     const users = await listUsers();
@@ -198,9 +313,11 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
           <h1>Benutzerverwaltung</h1>
           <p>Konten DSGVO-bewusst verwalten (minimal gespeicherte Stammdaten).</p>
         </div>
-        <div class="action-row">
-          <a class="button secondary" href="/admin/media">Bildverwaltung</a>
+        <div class="action-row admin-users-actions">
           <a class="button" href="/admin/users/new">Neuen Benutzer anlegen</a>
+          <a class="button secondary" href="/admin/media">Bildverwaltung</a>
+          <a class="button secondary" href="/admin/categories">Kategorien</a>
+          <a class="button secondary" href="/admin/index">Suchindex</a>
         </div>
       </section>
       ${renderUsersTable(request.csrfToken ?? "", request.currentUser?.id ?? "", users)}
@@ -231,6 +348,8 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
         </div>
         <div class="action-row">
           <a class="button secondary" href="/admin/users">Benutzerverwaltung</a>
+          <a class="button secondary" href="/admin/categories">Kategorien</a>
+          <a class="button secondary" href="/admin/index">Suchindex</a>
           <form method="post" action="/admin/media/cleanup" onsubmit="return confirm('Alle ungenutzten Bilddateien wirklich löschen?')">
             <input type="hidden" name="_csrf" value="${escapeHtml(request.csrfToken ?? "")}" />
             <button type="submit">Ungenutzte Bilder löschen</button>
@@ -332,6 +451,161 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
         : `Datei gelöscht: ${normalizedFileName}`;
 
     return reply.redirect(`/admin/media?notice=${encodeURIComponent(notice)}`);
+  });
+
+  app.get("/admin/categories", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const query = asRecord(request.query);
+    const categories = await listCategories();
+    const pages = await listPages();
+    const pageCountByCategory = new Map<string, number>();
+    for (const page of pages) {
+      pageCountByCategory.set(page.categoryId, (pageCountByCategory.get(page.categoryId) ?? 0) + 1);
+    }
+
+    const body = `
+      <section class="page-header">
+        <div>
+          <h1>Kategorien</h1>
+          <p>Kategorien für Artikel verwalten.</p>
+        </div>
+        <div class="action-row">
+          <a class="button secondary" href="/admin/users">Benutzerverwaltung</a>
+          <a class="button secondary" href="/admin/media">Bildverwaltung</a>
+          <a class="button secondary" href="/admin/index">Suchindex</a>
+        </div>
+      </section>
+      <section class="content-wrap stack">
+        <form method="post" action="/admin/categories/new" class="action-row">
+          <input type="hidden" name="_csrf" value="${escapeHtml(request.csrfToken ?? "")}" />
+          <input type="text" name="name" placeholder="Neue Kategorie" minlength="2" maxlength="80" required />
+          <button type="submit">Kategorie anlegen</button>
+        </form>
+        ${renderCategoriesTable(request.csrfToken ?? "", categories, pageCountByCategory)}
+      </section>
+    `;
+
+    return reply.type("text/html").send(
+      renderLayout({
+        title: "Kategorien",
+        body,
+        user: request.currentUser,
+        csrfToken: request.csrfToken,
+        notice: query.notice,
+        error: query.error
+      })
+    );
+  });
+
+  app.post("/admin/categories/new", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const body = asRecord(request.body);
+    if (!verifySessionCsrfToken(request, body._csrf ?? "")) {
+      return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
+    }
+
+    const result = await createCategory(body.name ?? "");
+    if (!result.ok) {
+      return reply.redirect(`/admin/categories?error=${encodeURIComponent(result.error ?? "Kategorie konnte nicht erstellt werden.")}`);
+    }
+
+    await writeAuditLog({
+      action: "admin_category_created",
+      actorId: request.currentUser?.id,
+      targetId: result.category?.id
+    });
+
+    return reply.redirect(`/admin/categories?notice=${encodeURIComponent("Kategorie erstellt.")}`);
+  });
+
+  app.post("/admin/categories/:id/rename", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const params = request.params as { id: string };
+    const body = asRecord(request.body);
+
+    if (!verifySessionCsrfToken(request, body._csrf ?? "")) {
+      return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
+    }
+
+    const result = await renameCategory(params.id, body.name ?? "");
+    if (!result.ok) {
+      return reply.redirect(`/admin/categories?error=${encodeURIComponent(result.error ?? "Kategorie konnte nicht umbenannt werden.")}`);
+    }
+
+    await writeAuditLog({
+      action: "admin_category_renamed",
+      actorId: request.currentUser?.id,
+      targetId: result.category?.id
+    });
+
+    return reply.redirect(`/admin/categories?notice=${encodeURIComponent("Kategorie umbenannt.")}`);
+  });
+
+  app.get("/admin/index", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const query = asRecord(request.query);
+    const info = await getSearchIndexInfo();
+    const status = getSearchIndexBuildStatus();
+
+    const body = `
+      <section class="page-header">
+        <div>
+          <h1>Suchindex</h1>
+          <p>Suchindex-Dateien neu generieren und Fortschritt live verfolgen.</p>
+        </div>
+        <div class="action-row">
+          <a class="button secondary" href="/admin/users">Benutzerverwaltung</a>
+          <a class="button secondary" href="/admin/media">Bildverwaltung</a>
+          <a class="button secondary" href="/admin/categories">Kategorien</a>
+        </div>
+      </section>
+      ${renderIndexManagement(request.csrfToken ?? "", info, status)}
+    `;
+
+    return reply.type("text/html").send(
+      renderLayout({
+        title: "Suchindex",
+        body,
+        user: request.currentUser,
+        csrfToken: request.csrfToken,
+        notice: query.notice,
+        error: query.error,
+        scripts: ["/admin-index.js?v=1"]
+      })
+    );
+  });
+
+  app.get("/admin/api/index/status", { preHandler: [requireAdmin] }, async (_request, reply) => {
+    const info = await getSearchIndexInfo();
+    const status = getSearchIndexBuildStatus();
+
+    return reply.send({
+      ok: true,
+      status,
+      info
+    });
+  });
+
+  app.post("/admin/api/index/rebuild", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const body = asRecord(request.body);
+    if (!verifySessionCsrfToken(request, body._csrf ?? "")) {
+      return reply.code(400).send({
+        ok: false,
+        error: "Ungültiges CSRF-Token"
+      });
+    }
+
+    const result = startSearchIndexRebuild();
+
+    if (result.started) {
+      await writeAuditLog({
+        action: "admin_search_index_rebuild_started",
+        actorId: request.currentUser?.id
+      });
+    }
+
+    return reply.send({
+      ok: result.started,
+      started: result.started,
+      reason: result.reason,
+      status: result.status
+    });
   });
 
   app.get("/admin/users/new", { preHandler: [requireAdmin] }, async (request, reply) => {

@@ -8,6 +8,7 @@ import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import { config } from "./config.js";
 import { attachCurrentUser } from "./lib/auth.js";
+import { ensureDefaultCategory } from "./lib/categoryStore.js";
 import { ensureDir, ensureFile } from "./lib/fileStore.js";
 import { purgeExpiredSessions } from "./lib/sessionStore.js";
 import { ensureInitialAdmin } from "./lib/userStore.js";
@@ -25,8 +26,10 @@ const app = Fastify({
 
 const bootstrapDataStorage = async (): Promise<void> => {
   await ensureDir(config.dataDir);
+  await ensureDir(config.indexDir);
   await ensureDir(config.wikiDir);
   await ensureDir(config.uploadDir);
+  await ensureFile(config.categoriesFile, "[]\n");
   await ensureFile(config.usersFile, "[]\n");
   await ensureFile(config.sessionsFile, "[]\n");
   await ensureFile(config.auditFile, "");
@@ -99,6 +102,7 @@ const registerRoutes = async (): Promise<void> => {
 const start = async (): Promise<void> => {
   try {
     await bootstrapDataStorage();
+    await ensureDefaultCategory();
     await registerPlugins();
 
     app.addHook("preHandler", attachCurrentUser);

@@ -5,6 +5,7 @@ import { escapeHtml, formatDate, renderLayout } from "../lib/render.js";
 import { changeUserPassword } from "../lib/userStore.js";
 import { validatePasswordStrength } from "../lib/password.js";
 import { deleteUserSessions } from "../lib/sessionStore.js";
+import { exportPagesCreatedByUser, listPagesCreatedByUser } from "../lib/wikiStore.js";
 
 const asRecord = (value: unknown): Record<string, string> => {
   if (!value || typeof value !== "object") return {};
@@ -19,6 +20,40 @@ export const registerAccountRoutes = async (app: FastifyInstance): Promise<void>
     if (!user) {
       return reply.redirect("/login");
     }
+
+    const myArticles = await listPagesCreatedByUser(user.username);
+
+    const myArticlesSection =
+      myArticles.length > 0
+        ? `
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Titel</th>
+                  <th>Slug</th>
+                  <th>Erstellt</th>
+                  <th>Zuletzt geändert</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${myArticles
+                  .map(
+                    (article) => `
+                  <tr>
+                    <td><a href="/wiki/${encodeURIComponent(article.slug)}">${escapeHtml(article.title)}</a></td>
+                    <td><code>${escapeHtml(article.slug)}</code></td>
+                    <td>${escapeHtml(formatDate(article.createdAt))}</td>
+                    <td>${escapeHtml(formatDate(article.updatedAt))}</td>
+                  </tr>
+                `
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          </div>
+        `
+        : '<p class="empty">Du hast bisher keine eigenen Artikel erstellt.</p>';
 
     const body = `
       <section class="content-wrap">
@@ -59,8 +94,13 @@ export const registerAccountRoutes = async (app: FastifyInstance): Promise<void>
 
         <hr />
         <h2>Datenexport (DSGVO)</h2>
-        <p>Du kannst deine gespeicherten Kontodaten als JSON exportieren.</p>
+        <p>Du kannst deine gespeicherten Kontodaten inklusive eigener Artikelübersicht und Markdown-Speicherdump als JSON exportieren.</p>
         <a class="button secondary" href="/account/export">Meine Daten herunterladen</a>
+
+        <hr />
+        <h2>Meine Artikel</h2>
+        <p>${myArticles.length} Artikel von dir erstellt. (Kriterium: <code>createdBy</code>, bei Altseiten Fallback auf <code>updatedBy</code>)</p>
+        ${myArticlesSection}
       </section>
     `;
 
@@ -122,6 +162,8 @@ export const registerAccountRoutes = async (app: FastifyInstance): Promise<void>
       return reply.redirect("/login");
     }
 
+    const myArticles = await exportPagesCreatedByUser(user.username);
+
     const payload = {
       exportedAt: new Date().toISOString(),
       user: {
@@ -133,6 +175,21 @@ export const registerAccountRoutes = async (app: FastifyInstance): Promise<void>
         updatedAt: user.updatedAt,
         lastLoginAt: user.lastLoginAt ?? null,
         disabled: user.disabled
+      },
+      authoredArticles: myArticles.map((article) => ({
+        slug: article.slug,
+        title: article.title,
+        tags: article.tags,
+        createdAt: article.createdAt,
+        updatedAt: article.updatedAt,
+        updatedBy: article.updatedBy
+      })),
+      storageDump: {
+        format: "markdown",
+        files: myArticles.map((article) => ({
+          path: `data/wiki/${article.slug}.md`,
+          markdown: article.markdown
+        }))
       }
     };
 

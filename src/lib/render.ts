@@ -84,7 +84,7 @@ export const renderLayout = (options: LayoutOptions): string => {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="referrer" content="same-origin" />
     <title>${title}</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=7" />
   </head>
   <body>
     <div class="bg-shape bg-shape-1"></div>
@@ -123,12 +123,19 @@ export const renderPageList = (pages: WikiPageSummary[]): string => {
         .map(
           (page) => `
           <article class="card">
-            <h3><a href="/wiki/${escapeHtml(page.slug)}">${escapeHtml(page.title)}</a></h3>
-            <p>${escapeHtml(page.excerpt || "Keine Vorschau verfügbar.")}</p>
+            <h3><a href="/wiki/${encodeURIComponent(page.slug)}">${escapeHtml(page.title)}</a></h3>
+            <p class="card-excerpt">${escapeHtml(page.excerpt || "Keine Vorschau verfügbar.")}</p>
             <div class="card-meta">
-              <span>${formatDate(page.updatedAt)}</span>
-              <span>${page.tags.map((tag) => `#${escapeHtml(tag)}`).join(" ")}</span>
+              <span class="meta-pill">${formatDate(page.updatedAt)}</span>
+              <span class="meta-pill">Kategorie: ${escapeHtml(page.categoryName)}</span>
+              <span class="meta-pill">${page.visibility === "restricted" ? "Zugriff: eingeschränkt" : "Zugriff: alle"}</span>
+              <span class="meta-pill">${page.encrypted ? "Verschlüsselt" : "Unverschlüsselt"}</span>
             </div>
+            ${
+              page.tags.length > 0
+                ? `<div class="card-tags">${page.tags.map((tag) => `<span class="tag-chip">#${escapeHtml(tag)}</span>`).join("")}</div>`
+                : ""
+            }
           </article>
         `
         )

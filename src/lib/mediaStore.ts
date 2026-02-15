@@ -1,11 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config.js";
-import { ensureDir, listFiles, removeFile } from "./fileStore.js";
+import { ensureDir, removeFile } from "./fileStore.js";
 import { getPage, listPages } from "./wikiStore.js";
 
-const SAFE_UPLOAD_FILENAME_PATTERN = /^[a-z0-9][a-z0-9._-]{0,255}$/i;
-const UPLOAD_REFERENCE_PATTERN = /\/uploads\/([a-z0-9][a-z0-9._%+-]{0,255})(?:\?[^)\s"'`<>]*)?/gi;
+const SAFE_UPLOAD_SEGMENT_PATTERN = /^[a-z0-9][a-z0-9._-]{0,120}$/i;
+const UPLOAD_REFERENCE_PATTERN = /\/uploads\/([a-z0-9][a-z0-9._%+-]*(?:\/[a-z0-9][a-z0-9._%+-]*)*)(?:\?[^)\s"'`<>]*)?/gi;
 
 export interface UploadPageReference {
   slug: string;
@@ -47,12 +47,16 @@ export const normalizeUploadFileName = (rawName: string): string | null => {
     decoded = trimmed;
   }
 
-  const baseName = path.basename(decoded);
-  if (!SAFE_UPLOAD_FILENAME_PATTERN.test(baseName)) {
-    return null;
-  }
+  const normalized = decoded.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+/g, "/");
+  const segments = normalized
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0 && segment !== "." && segment !== "..");
 
-  return baseName;
+  if (segments.length < 1) return null;
+  if (!segments.every((segment) => SAFE_UPLOAD_SEGMENT_PATTERN.test(segment))) return null;
+
+  return segments.join("/");
 };
 
 export const extractUploadReferencesFromMarkdown = (markdown: string): string[] => {
@@ -73,6 +77,41 @@ export const extractUploadReferencesFromMarkdown = (markdown: string): string[] 
 
 const sortRefs = (refs: UploadPageReference[]): UploadPageReference[] =>
   refs.sort((a, b) => a.title.localeCompare(b.title, "de", { sensitivity: "base" }));
+
+const listUploadFilesRecursive = async (
+  rootDir: string,
+  currentDir = rootDir
+): Promise<Array<{ relativePath: string; absolutePath: string }>> => {
+  let entries: Array<{ name: string; isDirectory: () => boolean; isFile: () => boolean }>;
+  try {
+    entries = (await fs.readdir(currentDir, {
+      withFileTypes: true,
+      encoding: "utf8"
+    })) as Array<{ name: string; isDirectory: () => boolean; isFile: () => boolean }>;
+  } catch {
+    return [];
+  }
+
+  const results: Array<{ relativePath: string; absolutePath: string }> = [];
+
+  for (const entry of entries) {
+    const absolutePath = path.join(currentDir, entry.name);
+    if (entry.isDirectory()) {
+      const nested = await listUploadFilesRecursive(rootDir, absolutePath);
+      results.push(...nested);
+      continue;
+    }
+
+    if (!entry.isFile()) continue;
+    const relativePath = path.relative(rootDir, absolutePath).replace(/\\/g, "/");
+    results.push({
+      relativePath,
+      absolutePath
+    });
+  }
+
+  return results;
+};
 
 const buildUsageMap = async (): Promise<Map<string, Map<string, UploadPageReference>>> => {
   const pages = await listPages();
@@ -98,19 +137,18 @@ const buildUsageMap = async (): Promise<Map<string, Map<string, UploadPageRefere
 
 const listUploadFilesWithStats = async (): Promise<Array<{ fileName: string; sizeBytes: number; modifiedAt: string }>> => {
   await ensureDir(config.uploadDir);
-  const allFilePaths = await listFiles(config.uploadDir);
+  const allFiles = await listUploadFilesRecursive(config.uploadDir);
 
   const entries = await Promise.all(
-    allFilePaths.map(async (filePath) => {
-      const fileName = path.basename(filePath);
-      const normalized = normalizeUploadFileName(fileName);
-      if (!normalized || normalized !== fileName) return null;
+    allFiles.map(async (entry) => {
+      const normalized = normalizeUploadFileName(entry.relativePath);
+      if (!normalized || normalized !== entry.relativePath) return null;
 
       try {
-        const stats = await fs.stat(filePath);
+        const stats = await fs.stat(entry.absolutePath);
         if (!stats.isFile()) return null;
         return {
-          fileName,
+          fileName: normalized,
           sizeBytes: stats.size,
           modifiedAt: stats.mtime.toISOString()
         };

@@ -14,6 +14,14 @@ export interface UserRecord {
 
 export type PublicUser = Omit<UserRecord, "passwordHash">;
 
+export interface WikiCategory {
+  id: string;
+  name: string;
+  uploadFolder: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SessionRecord {
   id: string;
   userId: string;
@@ -27,10 +35,17 @@ export interface SessionRecord {
 export interface WikiPage {
   slug: string;
   title: string;
+  categoryId: string;
+  categoryName: string;
+  visibility: WikiVisibility;
+  allowedUsers: string[];
+  encrypted: boolean;
+  encryptionState: "none" | "ok" | "locked" | "error";
   tags: string[];
   content: string;
   html: string;
   tableOfContents: WikiHeading[];
+  createdBy: string;
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
@@ -39,10 +54,17 @@ export interface WikiPage {
 export interface WikiPageSummary {
   slug: string;
   title: string;
+  categoryId: string;
+  categoryName: string;
+  visibility: WikiVisibility;
+  allowedUsers: string[];
+  encrypted: boolean;
   tags: string[];
   excerpt: string;
   updatedAt: string;
 }
+
+export type WikiVisibility = "all" | "restricted";
 
 export interface WikiHeading {
   id: string;
