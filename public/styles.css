@@ -258,6 +258,13 @@ a {
   margin-bottom: 1.2rem;
 }
 
+.page-header.under-title {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: start;
+  gap: 0.75rem;
+}
+
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
@@ -599,10 +606,9 @@ a[aria-disabled="true"] {
 }
 
 .admin-users-actions {
-  margin-left: auto;
-  display: grid;
-  grid-template-columns: repeat(3, max-content);
-  justify-content: end;
+  margin-left: 0;
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.45rem;
 }
 
@@ -610,9 +616,8 @@ a[aria-disabled="true"] {
   white-space: nowrap;
 }
 
-.admin-users-actions .button:not(.secondary) {
-  grid-column: 1 / -1;
-  justify-self: end;
+.page-header.under-title .action-row {
+  justify-content: flex-start;
 }
 
 .admin-index-shell {
@@ -930,15 +935,8 @@ hr {
   }
 
   .admin-users-actions {
-    margin-left: 0;
-    grid-template-columns: 1fr;
-    justify-content: stretch;
+    justify-content: flex-start;
     width: 100%;
-  }
-
-  .admin-users-actions .button:not(.secondary) {
-    grid-column: auto;
-    justify-self: stretch;
   }
 
   .toc-list li {

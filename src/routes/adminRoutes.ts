@@ -308,7 +308,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
     const query = asRecord(request.query);
 
     const body = `
-      <section class="page-header">
+      <section class="page-header under-title">
         <div>
           <h1>Benutzerverwaltung</h1>
           <p>Konten DSGVO-bewusst verwalten (minimal gespeicherte Stammdaten).</p>
@@ -341,7 +341,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
     const orphanCount = report.files.filter((file) => file.referencedBy.length === 0).length;
 
     const body = `
-      <section class="page-header">
+      <section class="page-header under-title">
         <div>
           <h1>Bildverwaltung</h1>
           <p>Upload-Dateien prüfen, Referenzen nachvollziehen und unbenutzte Bilder entfernen.</p>
@@ -463,7 +463,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
     }
 
     const body = `
-      <section class="page-header">
+      <section class="page-header under-title">
         <div>
           <h1>Kategorien</h1>
           <p>Kategorien für Artikel verwalten.</p>
@@ -544,7 +544,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
     const status = getSearchIndexBuildStatus();
 
     const body = `
-      <section class="page-header">
+      <section class="page-header under-title">
         <div>
           <h1>Suchindex</h1>
           <p>Suchindex-Dateien neu generieren und Fortschritt live verfolgen.</p>
