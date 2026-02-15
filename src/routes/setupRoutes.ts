@@ -48,7 +48,7 @@ export const registerSetupRoutes = async (app: FastifyInstance): Promise<void> =
             </label>
             <button type="submit">Setup abschließen</button>
           </form>
-          <p class="muted-note">Sicherheitswerte wie <code>COOKIE_SECRET</code>, <code>PASSWORD_PEPPER</code> und <code>CONTENT_ENCRYPTION_KEY</code> werden automatisch gesetzt.</p>
+          <p class="muted-note">Sicherheitswerte wie <code>COOKIE_SECRET</code>, <code>PASSWORD_PEPPER</code>, <code>CONTENT_ENCRYPTION_KEY</code> und <code>CONTENT_INTEGRITY_KEY</code> werden automatisch gesetzt.</p>
         </article>
       </section>
     `;

@@ -5,7 +5,6 @@ import dotenv from "dotenv";
 
 const rootDir = process.cwd();
 const configEnvPath = path.join(rootDir, "config.env");
-const instanceSecretsPath = path.join(rootDir, "data", "instance-secrets.json");
 
 const generateHex = (bytes: number): string => randomBytes(bytes).toString("hex");
 
@@ -31,6 +30,7 @@ const appendMissingEnvKeys = (filePath: string): InstallerResult => {
     COOKIE_SECRET: generateHex(32),
     PASSWORD_PEPPER: generateHex(24),
     CONTENT_ENCRYPTION_KEY: generateHex(32),
+    CONTENT_INTEGRITY_KEY: generateHex(32),
     SESSION_TTL_HOURS: "12",
     VERSION_HISTORY_RETENTION: "150",
     VERSION_HISTORY_COMPRESS_AFTER: "30",
@@ -56,6 +56,7 @@ const hasExternalConfig = [
   "COOKIE_SECRET",
   "PASSWORD_PEPPER",
   "CONTENT_ENCRYPTION_KEY",
+  "CONTENT_INTEGRITY_KEY",
   "BOOTSTRAP_ADMIN_PASSWORD",
   "BOOTSTRAP_ADMIN_USERNAME",
   "HOST",
@@ -92,11 +93,11 @@ const parseIndexBackend = (value: string | undefined): IndexBackend => {
   return normalized === "sqlite" ? "sqlite" : "flat";
 };
 
-const parseEncryptionKey = (value: string | undefined): Buffer | null => {
+const parseHexKey = (value: string | undefined, name: string): Buffer | null => {
   const raw = (value ?? "").trim();
   if (!raw) return null;
   if (!/^[a-f0-9]{64}$/i.test(raw)) {
-    console.warn("[WARN] CONTENT_ENCRYPTION_KEY ungültig. Erwartet: 64 Hex-Zeichen (AES-256).");
+    console.warn(`[WARN] ${name} ungültig. Erwartet: 64 Hex-Zeichen.`);
     return null;
   }
 
@@ -107,54 +108,11 @@ const parseEncryptionKey = (value: string | undefined): Buffer | null => {
   }
 };
 
-const readPersistentEncryptionKey = (): string | null => {
-  try {
-    const raw = fs.readFileSync(instanceSecretsPath, "utf8");
-    const parsed = JSON.parse(raw) as { contentEncryptionKey?: unknown };
-    const key = typeof parsed.contentEncryptionKey === "string" ? parsed.contentEncryptionKey.trim() : "";
-    return /^[a-f0-9]{64}$/i.test(key) ? key : null;
-  } catch {
-    return null;
-  }
-};
+const parseEncryptionKey = (value: string | undefined): Buffer | null => parseHexKey(value, "CONTENT_ENCRYPTION_KEY");
+const parseIntegrityKey = (value: string | undefined): Buffer | null => parseHexKey(value, "CONTENT_INTEGRITY_KEY");
 
-const writePersistentEncryptionKey = (hexKey: string): void => {
-  if (!/^[a-f0-9]{64}$/i.test(hexKey)) return;
-
-  try {
-    fs.mkdirSync(path.dirname(instanceSecretsPath), { recursive: true });
-    let base: Record<string, unknown> = {};
-    try {
-      const raw = fs.readFileSync(instanceSecretsPath, "utf8");
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object") {
-        base = parsed as Record<string, unknown>;
-      }
-    } catch {
-      base = {};
-    }
-
-    const next = {
-      ...base,
-      contentEncryptionKey: hexKey
-    };
-
-    fs.writeFileSync(instanceSecretsPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
-  } catch {
-    // noop
-  }
-};
-
-let runtimeEncryptionKey = parseEncryptionKey(process.env.CONTENT_ENCRYPTION_KEY);
-if (!runtimeEncryptionKey) {
-  const persisted = readPersistentEncryptionKey();
-  const generated = persisted ?? generateHex(32);
-  runtimeEncryptionKey = Buffer.from(generated, "hex");
-  process.env.CONTENT_ENCRYPTION_KEY = generated;
-  writePersistentEncryptionKey(generated);
-} else if (process.env.CONTENT_ENCRYPTION_KEY) {
-  writePersistentEncryptionKey(process.env.CONTENT_ENCRYPTION_KEY);
-}
+const runtimeEncryptionKey = parseEncryptionKey(process.env.CONTENT_ENCRYPTION_KEY);
+const runtimeIntegrityKey = parseIntegrityKey(process.env.CONTENT_INTEGRITY_KEY);
 
 export const config = {
   rootDir,
@@ -169,6 +127,7 @@ export const config = {
   indexBackend: parseIndexBackend(process.env.INDEX_BACKEND),
   bootstrapAdminUsername: process.env.BOOTSTRAP_ADMIN_USERNAME ?? "admin",
   contentEncryptionKey: runtimeEncryptionKey,
+  contentIntegrityKey: runtimeIntegrityKey,
   dataDir: path.join(rootDir, "data"),
   indexDir: path.join(rootDir, "data", "index"),
   searchIndexFile: path.join(rootDir, "data", "index", "pages.json"),

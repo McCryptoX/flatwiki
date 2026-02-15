@@ -26,6 +26,8 @@ FlatWiki ist ein modernes, durchsuchbares Flat-File-Wiki mit Login, Rollen, Admi
 - Zugriff pro Artikel (`alle` oder `nur ausgewählte Benutzer/Gruppen`)
 - Gruppen/Rechte-Modell (Admin-Gruppenverwaltung unter `/admin/groups`)
 - Optionale AES-256-Verschlüsselung pro Artikel
+- Integritätsschutz für Artikeldateien per HMAC-SHA256 (`CONTENT_INTEGRITY_KEY`)
+- Verschlüsselte Artikel werden ohne Klartext-Inhalt indiziert (nur Metadaten wie Titel/Tags)
 - Versionshistorie pro Artikel mit Restore (Admin)
 - Automatische Historienpflege pro Artikel
   - Retention-Limit (ältere Versionen werden gelöscht)
@@ -53,6 +55,7 @@ FlatWiki ist ein modernes, durchsuchbares Flat-File-Wiki mit Login, Rollen, Admi
   - Speicherübersicht der Versionshistorie
   - Manuelle Bereinigung (Retention + Kompression)
 - Beim Löschen eines Artikels: automatische Entfernung nicht mehr referenzierter Upload-Bilder
+- Verschlüsselte Backups mit separatem Backup-Schlüssel (`scripts/backup-encrypted.sh`, `scripts/backup-decrypt.sh`)
 - Admin-Kategorienverwaltung (`/admin/categories`)
 - Admin-Gruppenverwaltung (`/admin/groups`)
 - Visueller Setup-Assistent beim ersten Start (`/setup`)
@@ -182,11 +185,14 @@ docker compose up -d --build
 - Der erste Admin wird standardmäßig über den Setup-Assistenten (`/setup`) angelegt.
 - `BOOTSTRAP_ADMIN_PASSWORD` ist optional für Headless-Bootstrap und wird nur beim Erststart genutzt (wenn `data/users.json` leer ist).
 - `PASSWORD_PEPPER` nach dem ersten produktiven Start nicht mehr ändern, sonst funktionieren bestehende Passwörter nicht mehr.
+- Kryptoschlüssel werden nicht separat im `data/`-Ordner persistiert. Quelle ist ausschließlich `config.env`.
 - `CONTENT_ENCRYPTION_KEY` nach produktivem Start nicht mehr ändern, sonst können bestehende verschlüsselte Artikel nicht mehr gelesen werden.
+- `CONTENT_INTEGRITY_KEY` nach produktivem Start nicht mehr ändern, sonst schlagen Integritätsprüfungen signierter Artikel fehl.
 - `VERSION_HISTORY_RETENTION` bestimmt, wie viele Versionen pro Artikel behalten werden.
 - `VERSION_HISTORY_COMPRESS_AFTER` bestimmt, ab welcher Position ältere Versionen komprimiert werden.
 - Keine Secrets committen. `config.env` bleibt lokal; nur `config.env.example` wird versioniert.
 - Uploads liegen in `data/uploads/` (pro Kategorie in Unterordnern) und werden als `/uploads/...` bereitgestellt.
+- Für Backup-Verschlüsselung einen separaten Schlüssel nutzen (`BACKUP_ENCRYPTION_KEY`), nicht `CONTENT_ENCRYPTION_KEY`.
 
 ## Erstes Admin-Konto
 
@@ -248,10 +254,12 @@ Installer:
 Pflicht in Produktion:
 
 - `COOKIE_SECRET` (langes zufälliges Secret)
+- `CONTENT_INTEGRITY_KEY` (64 Hex, wird für Erstellen/Bearbeiten von Artikeln benötigt)
 
 Optional:
 
 - `PASSWORD_PEPPER`
+- `CONTENT_ENCRYPTION_KEY` (64 Hex, AES-256-GCM für Artikelinhalt)
 - `BOOTSTRAP_ADMIN_USERNAME`
 - `BOOTSTRAP_ADMIN_PASSWORD`
 - `WIKI_TITLE`
@@ -277,10 +285,34 @@ Empfehlung:
 git status --short
 ```
 
+## Backup und Restore (verschlüsselt)
+
+Backup mit separatem Schlüssel:
+
+```bash
+cd /pfad/zu/FlatWiki
+export BACKUP_ENCRYPTION_KEY='separater-backup-key'
+./scripts/backup-encrypted.sh
+```
+
+Restore:
+
+```bash
+cd /pfad/zu/FlatWiki
+export BACKUP_ENCRYPTION_KEY='separater-backup-key'
+./scripts/backup-decrypt.sh ./backups/flatwiki-backup-YYYYMMDD-HHMMSS.tar.gz.enc /ziel/pfad
+```
+
+Hinweise:
+
+- Backup-Schlüssel getrennt vom Content-Key halten.
+- Bei vorhandener `.sha256` wird die Prüfsumme beim Restore verifiziert.
+
 ## Artikel-Editor
 
 - Bilder können direkt im Editor hochgeladen werden.
 - Pro Upload sind mehrere Dateien möglich (1-x).
+- Bei verschlüsselten Artikeln ist der Bild-Upload bewusst deaktiviert.
 - Dateinamen werden automatisch in eindeutige Namen umbenannt.
 - Die Seitenadresse (URL-Pfad) wird aus dem Titel automatisch erzeugt und kann bei Bedarf angepasst werden.
 - Nach dem Upload werden die Markdown-Bildlinks automatisch in den Artikelinhalt eingefügt.
@@ -313,6 +345,9 @@ git status --short
 ├─ docker-compose.yml
 ├─ config.env.example
 ├─ install.sh
+├─ scripts/
+│  ├─ backup-encrypted.sh
+│  └─ backup-decrypt.sh
 ├─ data/
 │  └─ wiki/
 ├─ public/

@@ -84,24 +84,36 @@ const emptyIndexFile = (): SearchIndexFile => ({
 });
 
 const normalizeIndexEntry = (entry: SearchIndexPageEntry): SearchIndexPageEntry => ({
-  ...entry,
-  slug: String(entry.slug ?? "").trim().toLowerCase(),
-  title: String(entry.title ?? "").trim(),
-  categoryId: String(entry.categoryId ?? "").trim(),
-  categoryName: String(entry.categoryName ?? "").trim(),
-  visibility: entry.visibility === "restricted" ? "restricted" : "all",
-  allowedUsers: Array.isArray(entry.allowedUsers)
-    ? entry.allowedUsers.map((value) => String(value).trim().toLowerCase()).filter((value) => value.length > 0)
-    : [],
-  allowedGroups: Array.isArray(entry.allowedGroups)
-    ? entry.allowedGroups.map((value) => String(value).trim()).filter((value) => value.length > 0)
-    : [],
-  encrypted: entry.encrypted === true,
-  tags: Array.isArray(entry.tags) ? entry.tags.map((value) => String(value).trim().toLowerCase()).filter(Boolean) : [],
-  excerpt: String(entry.excerpt ?? "").trim(),
-  updatedAt: String(entry.updatedAt ?? "").trim(),
-  searchableText: String(entry.searchableText ?? "").toLowerCase().replace(/\s+/g, " ").trim(),
-  updatedAtMs: Number.isFinite(entry.updatedAtMs) ? entry.updatedAtMs : toSafeTimestamp(String(entry.updatedAt ?? ""))
+  ...(() => {
+    const encrypted = entry.encrypted === true;
+    const slug = String(entry.slug ?? "").trim().toLowerCase();
+    const title = String(entry.title ?? "").trim();
+    const tags = Array.isArray(entry.tags) ? entry.tags.map((value) => String(value).trim().toLowerCase()).filter(Boolean) : [];
+    const excerpt = encrypted ? "Verschlüsselter Inhalt" : String(entry.excerpt ?? "").trim();
+    const searchableText = encrypted
+      ? `${title}\n${tags.join(" ")}\n${excerpt}`.toLowerCase().replace(/\s+/g, " ").trim()
+      : String(entry.searchableText ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+
+    return {
+      slug,
+      title,
+      categoryId: String(entry.categoryId ?? "").trim(),
+      categoryName: String(entry.categoryName ?? "").trim(),
+      visibility: entry.visibility === "restricted" ? "restricted" : "all",
+      allowedUsers: Array.isArray(entry.allowedUsers)
+        ? entry.allowedUsers.map((value) => String(value).trim().toLowerCase()).filter((value) => value.length > 0)
+        : [],
+      allowedGroups: Array.isArray(entry.allowedGroups)
+        ? entry.allowedGroups.map((value) => String(value).trim()).filter((value) => value.length > 0)
+        : [],
+      encrypted,
+      tags,
+      excerpt,
+      updatedAt: String(entry.updatedAt ?? "").trim(),
+      searchableText,
+      updatedAtMs: Number.isFinite(entry.updatedAtMs) ? entry.updatedAtMs : toSafeTimestamp(String(entry.updatedAt ?? ""))
+    };
+  })()
 });
 
 const readSearchIndexFile = async (): Promise<SearchIndexFile> => {
@@ -158,7 +170,12 @@ const toSearchableText = (summary: WikiPageSummary, content: string): string =>
   `${summary.title}\n${summary.tags.join(" ")}\n${summary.excerpt}\n${content}`.toLowerCase().replace(/\s+/g, " ").trim();
 
 const buildIndexEntryFromPage = (page: WikiPage): SearchIndexPageEntry => {
-  const excerpt = page.encrypted && page.encryptionState !== "ok" ? "Verschlüsselter Inhalt" : cleanTextExcerpt(page.content).slice(0, 220);
+  const isIntegrityBroken = page.integrityState === "invalid" || page.integrityState === "unverifiable";
+  const excerpt = isIntegrityBroken
+    ? "Integritätsprüfung fehlgeschlagen"
+    : page.encrypted
+      ? "Verschlüsselter Inhalt"
+      : cleanTextExcerpt(page.content).slice(0, 220);
   const summary: WikiPageSummary = {
     slug: page.slug,
     title: page.title,
@@ -173,7 +190,7 @@ const buildIndexEntryFromPage = (page: WikiPage): SearchIndexPageEntry => {
     updatedAt: page.updatedAt
   };
 
-  const content = page.encrypted && page.encryptionState !== "ok" ? "" : page.content;
+  const content = page.encrypted || isIntegrityBroken ? "" : page.content;
   return {
     ...summary,
     searchableText: toSearchableText(summary, content),

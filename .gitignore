@@ -12,3 +12,4 @@ data/wiki/*
 data/users.json
 data/sessions.json
 data/audit.log
+backups/

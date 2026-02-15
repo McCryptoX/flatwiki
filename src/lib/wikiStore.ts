@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import matter from "gray-matter";
@@ -22,8 +22,28 @@ const SLUG_PATTERN = /^[a-z0-9-]{1,80}$/;
 const SUGGESTION_INDEX_MAX_AGE_MS = 20_000;
 const INTERNAL_LINK_GRAPH_MAX_AGE_MS = 30_000;
 const INTERNAL_LINK_PATTERN = /\[\[([^\]|]+?)(?:\|([^\]]+))?\]\]/g;
+const CONTENT_INTEGRITY_VERSION = 1;
 
 interface EncryptedPayload {
+  encIv: string;
+  encTag: string;
+  encData: string;
+}
+
+interface IntegrityPayloadInput {
+  slug: string;
+  title: string;
+  categoryId: string;
+  visibility: WikiVisibility;
+  allowedUsers: string[];
+  allowedGroups: string[];
+  encrypted: boolean;
+  tags: string[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string;
+  markdownBody: string;
   encIv: string;
   encTag: string;
   encData: string;
@@ -473,6 +493,49 @@ const decryptContent = (payload: EncryptedPayload): string | null => {
   }
 };
 
+const buildIntegrityPayload = (input: IntegrityPayloadInput): string => {
+  const canonical = {
+    version: CONTENT_INTEGRITY_VERSION,
+    slug: input.slug.trim().toLowerCase(),
+    title: input.title.trim(),
+    categoryId: input.categoryId.trim(),
+    visibility: input.visibility,
+    allowedUsers: input.allowedUsers.map((entry) => entry.trim().toLowerCase()),
+    allowedGroups: input.allowedGroups.map((entry) => entry.trim()),
+    encrypted: input.encrypted === true,
+    tags: input.tags.map((entry) => entry.trim().toLowerCase()),
+    createdBy: input.createdBy.trim(),
+    createdAt: input.createdAt.trim(),
+    updatedAt: input.updatedAt.trim(),
+    updatedBy: input.updatedBy.trim(),
+    markdownBody: input.markdownBody,
+    encIv: input.encIv,
+    encTag: input.encTag,
+    encData: input.encData
+  };
+  return JSON.stringify(canonical);
+};
+
+const createIntegrityHmac = (payload: string): string | null => {
+  const integrityKey = config.contentIntegrityKey;
+  if (!integrityKey) return null;
+  return createHmac("sha256", integrityKey).update(payload, "utf8").digest("base64");
+};
+
+const verifyIntegrityHmac = (payload: string, expectedHmacBase64: string): boolean => {
+  const actual = createIntegrityHmac(payload);
+  if (!actual) return false;
+
+  try {
+    const expectedBuffer = Buffer.from(expectedHmacBase64, "base64");
+    const actualBuffer = Buffer.from(actual, "base64");
+    if (expectedBuffer.length < 1 || expectedBuffer.length !== actualBuffer.length) return false;
+    return timingSafeEqual(expectedBuffer, actualBuffer);
+  } catch {
+    return false;
+  }
+};
+
 const resolveCategoryMeta = async (categoryId: string): Promise<{ id: string; name: string }> => {
   const defaultCategory = await getDefaultCategory();
   if (!categoryId) {
@@ -508,20 +571,58 @@ const parseMarkdownPageFromPath = async (slug: string, filePath: string, fallbac
   const createdAt = String(data.createdAt ?? data.updatedAt ?? fallbackTimestamp);
   const updatedAt = String(data.updatedAt ?? data.createdAt ?? fallbackTimestamp);
   const updatedBy = String(data.updatedBy ?? "unknown");
+  const rawBody = parsed.content.trim();
 
   const encryptedByMeta = data.encrypted === true;
   const encryptedByPayload =
     typeof data.encIv === "string" && typeof data.encTag === "string" && typeof data.encData === "string";
   const encrypted = encryptedByMeta || encryptedByPayload;
+  const encIv = String(data.encIv ?? "");
+  const encTag = String(data.encTag ?? "");
+  const encData = String(data.encData ?? "");
+
+  const integrityVersionRaw = Number.parseInt(String(data.integrityVersion ?? ""), 10);
+  const integrityVersion = Number.isFinite(integrityVersionRaw) ? integrityVersionRaw : null;
+  const integrityHmac = typeof data.integrityHmac === "string" ? data.integrityHmac.trim() : "";
+  const hasIntegrityInfo = integrityVersion !== null || integrityHmac.length > 0;
+  let integrityState: WikiPage["integrityState"] = "legacy";
+
+  if (hasIntegrityInfo) {
+    if (integrityVersion !== CONTENT_INTEGRITY_VERSION || integrityHmac.length < 1) {
+      integrityState = "invalid";
+    } else if (!config.contentIntegrityKey) {
+      integrityState = "unverifiable";
+    } else {
+      const payload = buildIntegrityPayload({
+        slug,
+        title,
+        categoryId: category.id,
+        visibility,
+        allowedUsers,
+        allowedGroups,
+        encrypted,
+        tags,
+        createdBy,
+        createdAt,
+        updatedAt,
+        updatedBy,
+        markdownBody: rawBody,
+        encIv,
+        encTag,
+        encData
+      });
+      integrityState = verifyIntegrityHmac(payload, integrityHmac) ? "valid" : "invalid";
+    }
+  }
 
   let encryptionState: WikiPage["encryptionState"] = "none";
-  let content = parsed.content.trim();
+  let content = rawBody;
 
   if (encrypted) {
     const decrypted = decryptContent({
-      encIv: String(data.encIv ?? ""),
-      encTag: String(data.encTag ?? ""),
-      encData: String(data.encData ?? "")
+      encIv,
+      encTag,
+      encData
     });
 
     if (decrypted === null) {
@@ -531,6 +632,34 @@ const parseMarkdownPageFromPath = async (slug: string, filePath: string, fallbac
       encryptionState = "ok";
       content = decrypted.trim();
     }
+  }
+
+  if (integrityState === "invalid" || integrityState === "unverifiable") {
+    const html =
+      integrityState === "unverifiable"
+        ? '<p class="muted-note">Integritätsprüfung nicht möglich. Setze <code>CONTENT_INTEGRITY_KEY</code>, um signierte Artikel zu prüfen.</p>'
+        : '<p class="muted-note">Integritätsprüfung fehlgeschlagen. Die Datei wurde möglicherweise manipuliert.</p>';
+
+    return {
+      slug,
+      title,
+      categoryId: category.id,
+      categoryName: category.name,
+      visibility,
+      allowedUsers,
+      allowedGroups,
+      encrypted,
+      encryptionState: encrypted ? "error" : "none",
+      integrityState,
+      tags,
+      content: "",
+      html,
+      tableOfContents: [],
+      createdBy,
+      createdAt,
+      updatedAt,
+      updatedBy
+    };
   }
 
   if (encrypted && encryptionState !== "ok") {
@@ -549,6 +678,7 @@ const parseMarkdownPageFromPath = async (slug: string, filePath: string, fallbac
       allowedGroups,
       encrypted,
       encryptionState,
+      integrityState,
       tags,
       content,
       html,
@@ -572,6 +702,7 @@ const parseMarkdownPageFromPath = async (slug: string, filePath: string, fallbac
     allowedGroups,
     encrypted,
     encryptionState,
+    integrityState,
     tags,
     content,
     html,
@@ -593,7 +724,12 @@ const toSummary = (page: WikiPage): WikiPageSummary => ({
   allowedGroups: page.allowedGroups,
   encrypted: page.encrypted,
   tags: page.tags,
-  excerpt: page.encrypted && page.encryptionState !== "ok" ? "Verschlüsselter Inhalt" : cleanTextExcerpt(page.content).slice(0, 220),
+  excerpt:
+    page.integrityState === "invalid" || page.integrityState === "unverifiable"
+      ? "Integritätsprüfung fehlgeschlagen"
+      : page.encrypted
+        ? "Verschlüsselter Inhalt"
+        : cleanTextExcerpt(page.content).slice(0, 220),
   updatedAt: page.updatedAt
 });
 
@@ -739,7 +875,9 @@ const buildInternalLinkGraph = async (): Promise<InternalLinkGraph> => {
 
   for (const summary of summaries) {
     const page = await getPage(summary.slug);
-    if (!page || page.encryptionState === "locked" || page.encryptionState === "error") continue;
+    if (!page) continue;
+    if (page.integrityState === "invalid" || page.integrityState === "unverifiable") continue;
+    if (page.encryptionState === "locked" || page.encryptionState === "error") continue;
 
     const links = parseInternalWikiLinks(page.content);
     const seenTargets = new Set<string>();
@@ -898,6 +1036,8 @@ const loadPersistedSuggestionIndex = async (options?: { categoryId?: string }): 
     const slug = String(raw.slug ?? "").trim().toLowerCase();
     if (!isValidSlug(slug)) continue;
 
+    const encrypted = raw.encrypted === true;
+    const excerpt = encrypted ? "Verschlüsselter Inhalt" : String(raw.excerpt ?? "").trim();
     const summary: WikiPageSummary = {
       slug,
       title: String(raw.title ?? slug).trim() || slug,
@@ -910,9 +1050,9 @@ const loadPersistedSuggestionIndex = async (options?: { categoryId?: string }): 
       allowedGroups: Array.isArray(raw.allowedGroups)
         ? raw.allowedGroups.map((entry) => String(entry).trim()).filter((entry) => entry.length > 0)
         : [],
-      encrypted: raw.encrypted === true,
+      encrypted,
       tags: Array.isArray(raw.tags) ? raw.tags.map((tag) => String(tag).trim().toLowerCase()).filter(Boolean) : [],
-      excerpt: String(raw.excerpt ?? "").trim(),
+      excerpt,
       updatedAt: String(raw.updatedAt ?? "")
     };
 
@@ -920,7 +1060,8 @@ const loadPersistedSuggestionIndex = async (options?: { categoryId?: string }): 
 
     const titleLower = summary.title.toLowerCase();
     const tagsLower = summary.tags.map((tag) => tag.toLowerCase());
-    const searchableText = String(raw.searchableText ?? `${titleLower}\n${summary.excerpt}\n${tagsLower.join(" ")}`)
+    const persistedSearchableText = encrypted ? `${titleLower}\n${tagsLower.join(" ")}\n${summary.excerpt}` : String(raw.searchableText ?? `${titleLower}\n${summary.excerpt}\n${tagsLower.join(" ")}`);
+    const searchableText = persistedSearchableText
       .toLowerCase()
       .replace(/\s+/g, " ")
       .trim();
@@ -1026,17 +1167,51 @@ export const savePage = async (input: SavePageInput): Promise<{ ok: boolean; err
   };
 
   let markdownBody = input.content.trim();
+  let encIv = "";
+  let encTag = "";
+  let encData = "";
   if (encrypted) {
     const payload = encryptContent(markdownBody);
     if (!payload) {
       return { ok: false, error: "Verschlüsselung fehlgeschlagen." };
     }
 
-    frontmatterData.encIv = payload.encIv;
-    frontmatterData.encTag = payload.encTag;
-    frontmatterData.encData = payload.encData;
+    encIv = payload.encIv;
+    encTag = payload.encTag;
+    encData = payload.encData;
+    frontmatterData.encIv = encIv;
+    frontmatterData.encTag = encTag;
+    frontmatterData.encData = encData;
     markdownBody = "";
   }
+
+  const integrityPayload = buildIntegrityPayload({
+    slug,
+    title,
+    categoryId: category.id,
+    visibility,
+    allowedUsers,
+    allowedGroups,
+    encrypted,
+    tags,
+    createdBy,
+    createdAt,
+    updatedAt,
+    updatedBy: input.updatedBy,
+    markdownBody,
+    encIv,
+    encTag,
+    encData
+  });
+  const integrityHmac = createIntegrityHmac(integrityPayload);
+  if (!integrityHmac) {
+    return {
+      ok: false,
+      error: "Integritätsschutz ist nicht aktiv: CONTENT_INTEGRITY_KEY fehlt oder ist ungültig."
+    };
+  }
+  frontmatterData.integrityVersion = CONTENT_INTEGRITY_VERSION;
+  frontmatterData.integrityHmac = integrityHmac;
 
   if (existingPage) {
     const snapshotResult = await snapshotCurrentPageFile({

@@ -277,7 +277,9 @@ const renderEditorForm = (params: {
   encrypted: boolean;
   encryptionAvailable: boolean;
 }): string => `
-  <section class="content-wrap editor-shell" data-preview-endpoint="/api/markdown/preview" data-csrf="${escapeHtml(params.csrfToken)}">
+  <section class="content-wrap editor-shell" data-preview-endpoint="/api/markdown/preview" data-csrf="${escapeHtml(
+    params.csrfToken
+  )}" data-page-slug="${escapeHtml(params.slug)}">
     <h1>${params.mode === "new" ? "Neue Seite" : "Seite bearbeiten"}</h1>
     <div class="editor-grid">
       <form method="post" action="${escapeHtml(params.action)}" class="stack large">
@@ -299,7 +301,7 @@ const renderEditorForm = (params: {
           <span class="muted-note small">Adresse der Seite in der URL. Kann leer bleiben und wird automatisch erstellt.</span>
         </label>
         <label>Kategorie
-          <select name="categoryId" required>
+          <select name="categoryId" required data-category-input>
             ${params.categories
               .map(
                 (category) =>
@@ -363,9 +365,9 @@ const renderEditorForm = (params: {
             }
           </div>
         </fieldset>
-        <label class="checkline standalone-checkline"><input type="checkbox" name="encrypted" value="1" ${params.encrypted ? "checked" : ""} ${
-          params.encryptionAvailable ? "" : "disabled"
-        } /> <span>Inhalt im Dateisystem verschlüsseln (AES-256)</span></label>
+        <label class="checkline standalone-checkline"><input type="checkbox" name="encrypted" value="1" data-encrypted-toggle ${
+          params.encrypted ? "checked" : ""
+        } ${params.encryptionAvailable ? "" : "disabled"} /> <span>Inhalt im Dateisystem verschlüsseln (AES-256)</span></label>
         ${
           params.encryptionAvailable
             ? ""
@@ -404,13 +406,20 @@ const renderEditorForm = (params: {
       <aside class="upload-panel">
         <h2>Bilder einfügen</h2>
         <p class="muted-note">Du kannst 1-x Bilder hochladen. Dateien werden automatisch sicher umbenannt.</p>
+        ${
+          params.encrypted
+            ? '<p class="muted-note small">Bei verschlüsselten Artikeln ist Bild-Upload deaktiviert, damit keine Klartext-Dateien neben verschlüsseltem Inhalt entstehen.</p>'
+            : ""
+        }
         <form method="post" enctype="multipart/form-data" class="stack image-upload-form" data-upload-endpoint="/api/uploads" data-csrf="${escapeHtml(
           params.csrfToken
-        )}">
+        )}" data-upload-hard-disabled="${params.mode === "edit" && params.encrypted ? "1" : "0"}">
           <label>Bilder auswählen
-            <input type="file" name="images" accept="image/png,image/jpeg,image/webp,image/gif,image/avif" multiple required />
+            <input type="file" name="images" accept="image/png,image/jpeg,image/webp,image/gif,image/avif" multiple required ${
+              params.encrypted ? "disabled" : ""
+            } />
           </label>
-          <button type="submit" class="secondary">Bilder hochladen</button>
+          <button type="submit" class="secondary" ${params.encrypted ? "disabled" : ""}>Bilder hochladen</button>
         </form>
         <p class="muted-note small">Nach dem Upload werden Markdown-Zeilen automatisch in den Inhalt eingefügt.</p>
         <textarea class="upload-markdown-output" rows="6" readonly placeholder="Upload-Ausgabe erscheint hier"></textarea>
@@ -595,7 +604,15 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
             <h1>${escapeHtml(page.title)}</h1>
             <p class="meta">Kategorie: ${escapeHtml(page.categoryName)} | Zugriff: ${
               page.visibility === "restricted" ? "eingeschränkt" : "alle"
-            } | ${page.encrypted ? "Verschlüsselt" : "Unverschlüsselt"}</p>
+            } | ${page.encrypted ? "Verschlüsselt" : "Unverschlüsselt"} | Integrität: ${
+              page.integrityState === "valid"
+                ? "geprüft"
+                : page.integrityState === "legacy"
+                  ? "legacy"
+                  : page.integrityState === "unverifiable"
+                    ? "nicht prüfbar"
+                    : "fehlerhaft"
+            }</p>
             <p class="meta">Zuletzt geändert: ${escapeHtml(page.updatedAt)} | von ${escapeHtml(page.updatedBy)}</p>
             <div class="actions">
               <a class="button secondary" href="/wiki/${encodeURIComponent(page.slug)}/edit">Bearbeiten</a>
@@ -685,7 +702,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         user: request.currentUser,
         csrfToken: request.csrfToken,
         error: readSingle(query.error),
-        scripts: ["/wiki-ui.js?v=7"]
+        scripts: ["/wiki-ui.js?v=8"]
       })
     );
   });
@@ -817,6 +834,14 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
       return reply.redirect("/?error=Kein+Zugriff");
     }
 
+    if (page.integrityState === "invalid") {
+      return reply.redirect(`/wiki/${encodeURIComponent(page.slug)}?error=Integrit%C3%A4tspr%C3%BCfung+fehlgeschlagen`);
+    }
+
+    if (page.integrityState === "unverifiable") {
+      return reply.redirect(`/wiki/${encodeURIComponent(page.slug)}?error=Integrit%C3%A4tspr%C3%BCfung+nicht+m%C3%B6glich`);
+    }
+
     if (page.encrypted && page.encryptionState !== "ok") {
       return reply.redirect(`/wiki/${encodeURIComponent(page.slug)}?error=Verschl%C3%BCsselter+Inhalt+konnte+nicht+entschl%C3%BCsselt+werden`);
     }
@@ -868,7 +893,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         user: request.currentUser,
         csrfToken: request.csrfToken,
         error: readSingle(query.error),
-        scripts: ["/wiki-ui.js?v=7"]
+        scripts: ["/wiki-ui.js?v=8"]
       })
     );
   });
@@ -878,12 +903,31 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     const csrfValue = Array.isArray(csrfToken) ? csrfToken[0] ?? "" : csrfToken ?? "";
     const query = asObject(request.query);
     const selectedCategoryId = readSingle(query.categoryId);
+    const pageSlug = readSingle(query.slug).trim().toLowerCase();
+    const encryptedContext = ["1", "true", "on"].includes(readSingle(query.encrypted).trim().toLowerCase());
     const category = (await findCategoryById(selectedCategoryId)) ?? (await getDefaultCategory());
     const uploadSubDir = category.uploadFolder.trim() || "allgemein";
     const uploadTargetDir = path.join(config.uploadDir, uploadSubDir);
 
     if (!verifySessionCsrfToken(request, csrfValue)) {
       return reply.code(400).send({ ok: false, error: "Ungültiges CSRF-Token." });
+    }
+
+    if (encryptedContext) {
+      return reply.code(400).send({
+        ok: false,
+        error: "Bei verschlüsselten Artikeln ist Bild-Upload deaktiviert."
+      });
+    }
+
+    if (isValidSlug(pageSlug)) {
+      const existingPage = await getPage(pageSlug);
+      if (existingPage?.encrypted) {
+        return reply.code(400).send({
+          ok: false,
+          error: "Dieser Artikel ist verschlüsselt. Bild-Upload ist deaktiviert."
+        });
+      }
     }
 
     if (!request.isMultipart()) {
@@ -987,6 +1031,14 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
 
     if (!canUserAccessPage(existing, request.currentUser)) {
       return reply.redirect("/?error=Kein+Zugriff");
+    }
+
+    if (existing.integrityState === "invalid") {
+      return reply.redirect(`/wiki/${encodeURIComponent(params.slug)}?error=Integrit%C3%A4tspr%C3%BCfung+fehlgeschlagen`);
+    }
+
+    if (existing.integrityState === "unverifiable") {
+      return reply.redirect(`/wiki/${encodeURIComponent(params.slug)}?error=Integrit%C3%A4tspr%C3%BCfung+nicht+m%C3%B6glich`);
     }
 
     if (existing.encrypted && existing.encryptionState !== "ok") {

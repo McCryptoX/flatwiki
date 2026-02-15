@@ -48,6 +48,7 @@ ensure_key "HOST" "0.0.0.0" || true
 ensure_key "COOKIE_SECRET" "$(random_hex 32)" || true
 ensure_key "PASSWORD_PEPPER" "$(random_hex 24)" || true
 ensure_key "CONTENT_ENCRYPTION_KEY" "$(random_hex 32)" || true
+ensure_key "CONTENT_INTEGRITY_KEY" "$(random_hex 32)" || true
 ensure_key "SESSION_TTL_HOURS" "12" || true
 ensure_key "WIKI_TITLE" "FlatWiki" || true
 ensure_key "INDEX_BACKEND" "flat" || true

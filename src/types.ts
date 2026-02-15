@@ -53,6 +53,7 @@ export interface WikiPage {
   allowedGroups: string[];
   encrypted: boolean;
   encryptionState: "none" | "ok" | "locked" | "error";
+  integrityState: "legacy" | "valid" | "invalid" | "unverifiable";
   tags: string[];
   content: string;
   html: string;

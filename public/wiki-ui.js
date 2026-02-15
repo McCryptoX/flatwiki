@@ -97,6 +97,7 @@
     const contentTextarea = editorShell.querySelector('[data-editor-textarea], textarea[name="content"]');
     const uploadForm = editorShell.querySelector(".image-upload-form");
     const output = editorShell.querySelector(".upload-markdown-output");
+    const encryptionToggle = editorShell.querySelector('input[name="encrypted"][data-encrypted-toggle], input[name="encrypted"]');
     const visibilitySelect = editorShell.querySelector('select[name="visibility"]');
     const restrictedSections = Array.from(editorShell.querySelectorAll("[data-restricted-only]"));
     const accessPickers = restrictedSections
@@ -136,6 +137,8 @@
     const uploadEndpoint = uploadForm instanceof HTMLFormElement ? uploadForm.dataset.uploadEndpoint || "/api/uploads" : "/api/uploads";
     const csrfToken = editorShell.dataset.csrf || (uploadForm instanceof HTMLFormElement ? uploadForm.dataset.csrf || "" : "");
     const previewEndpoint = editorShell.dataset.previewEndpoint || "/api/markdown/preview";
+    const pageSlug = (editorShell.dataset.pageSlug || "").trim().toLowerCase();
+    const uploadDisabledMessage = "Bild-Upload ist für verschlüsselte Artikel deaktiviert.";
 
     let previewTimer = null;
     let previewAbortController = null;
@@ -216,6 +219,33 @@
       }
     };
 
+    const isUploadHardDisabled = () =>
+      uploadForm instanceof HTMLFormElement && uploadForm.dataset.uploadHardDisabled === "1";
+
+    const isEncryptedSelected = () =>
+      encryptionToggle instanceof HTMLInputElement && !encryptionToggle.disabled && encryptionToggle.checked;
+
+    const syncUploadAvailability = () => {
+      if (!(uploadForm instanceof HTMLFormElement)) return;
+      const shouldDisable = isUploadHardDisabled() || isEncryptedSelected();
+      const fileInput = uploadForm.querySelector('input[type="file"][name="images"]');
+      const submitButton = uploadForm.querySelector('button[type="submit"]');
+
+      if (fileInput instanceof HTMLInputElement) {
+        fileInput.disabled = shouldDisable;
+      }
+      if (submitButton instanceof HTMLButtonElement) {
+        submitButton.disabled = shouldDisable;
+      }
+
+      if (output instanceof HTMLTextAreaElement && shouldDisable) {
+        output.value = uploadDisabledMessage;
+      }
+      if (output instanceof HTMLTextAreaElement && !shouldDisable && output.value.trim() === uploadDisabledMessage) {
+        output.value = "";
+      }
+    };
+
     const applyPickerFilter = (picker) => {
       const labels = picker.list.querySelectorAll("label[data-search]");
       const term = picker.filter instanceof HTMLInputElement ? picker.filter.value.trim().toLowerCase() : "";
@@ -269,6 +299,12 @@
       });
     }
 
+    if (encryptionToggle instanceof HTMLInputElement) {
+      encryptionToggle.addEventListener("change", () => {
+        syncUploadAvailability();
+      });
+    }
+
     for (const picker of accessPickers) {
       if (picker.filter instanceof HTMLInputElement) {
         picker.filter.addEventListener("input", () => {
@@ -289,6 +325,11 @@
       uploadForm.addEventListener("submit", async (event) => {
         event.preventDefault();
 
+        if (isUploadHardDisabled() || isEncryptedSelected()) {
+          output.value = uploadDisabledMessage;
+          return;
+        }
+
         const fileInput = uploadForm.querySelector('input[type="file"][name="images"]');
         if (!(fileInput instanceof HTMLInputElement) || !fileInput.files || fileInput.files.length === 0) {
           output.value = "Bitte mindestens ein Bild auswählen.";
@@ -304,9 +345,20 @@
 
         try {
           let resolvedUploadEndpoint = uploadEndpoint;
+          const params = new URLSearchParams();
           if (categorySelect instanceof HTMLSelectElement && categorySelect.value.trim().length > 0) {
+            params.set("categoryId", categorySelect.value.trim());
+          }
+          if (isEncryptedSelected()) {
+            params.set("encrypted", "1");
+          }
+          if (pageSlug.length > 0) {
+            params.set("slug", pageSlug);
+          }
+          const queryString = params.toString();
+          if (queryString.length > 0) {
             const separator = resolvedUploadEndpoint.includes("?") ? "&" : "?";
-            resolvedUploadEndpoint = `${resolvedUploadEndpoint}${separator}categoryId=${encodeURIComponent(categorySelect.value.trim())}`;
+            resolvedUploadEndpoint = `${resolvedUploadEndpoint}${separator}${queryString}`;
           }
 
           const response = await fetch(resolvedUploadEndpoint, {
@@ -333,6 +385,8 @@
         }
       });
     }
+
+    syncUploadAvailability();
 
     contentTextarea.addEventListener("keydown", (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "b") {
