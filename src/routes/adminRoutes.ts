@@ -3,6 +3,7 @@ import { requireAdmin, verifySessionCsrfToken } from "../lib/auth.js";
 import { writeAuditLog } from "../lib/audit.js";
 import { createCategory, listCategories, renameCategory } from "../lib/categoryStore.js";
 import {
+  ensureSearchIndexConsistency,
   getSearchIndexBuildStatus,
   getSearchIndexInfo,
   startSearchIndexRebuild
@@ -24,6 +25,7 @@ import {
   validateUserInput
 } from "../lib/userStore.js";
 import { validatePasswordStrength } from "../lib/password.js";
+import { getRuntimeSettings, setIndexBackend } from "../lib/runtimeSettingsStore.js";
 import { deleteUserSessions } from "../lib/sessionStore.js";
 import { listPages } from "../lib/wikiStore.js";
 
@@ -244,7 +246,8 @@ const renderCategoriesTable = (
 const renderIndexManagement = (
   csrfToken: string,
   info: Awaited<ReturnType<typeof getSearchIndexInfo>>,
-  status: ReturnType<typeof getSearchIndexBuildStatus>
+  status: ReturnType<typeof getSearchIndexBuildStatus>,
+  indexBackend: "flat" | "sqlite"
 ): string => {
   const percent = Number.isFinite(status.percent) ? Math.min(Math.max(status.percent, 0), 100) : 0;
   const statusError = status.error ? escapeHtml(status.error) : "";
@@ -275,6 +278,23 @@ const renderIndexManagement = (
           <dt>Zuletzt generiert</dt>
           <dd>${info.generatedAt ? escapeHtml(formatDate(info.generatedAt)) : "-"}</dd>
         </dl>
+      </div>
+
+      <div class="admin-index-panel">
+        <h2>Backend</h2>
+        <p class="muted-note">
+          Artikel bleiben immer Markdown-Dateien. Hier wird nur der Such-/Metadatenindex umgestellt.
+        </p>
+        <form method="post" action="/admin/index/backend" class="stack">
+          <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}" />
+          <label>Index-Backend
+            <select name="backend" ${status.running ? "disabled" : ""}>
+              <option value="flat" ${indexBackend === "flat" ? "selected" : ""}>Flat-Datei (pages.json)</option>
+              <option value="sqlite" ${indexBackend === "sqlite" ? "selected" : ""}>SQLite Hybrid (pages.sqlite)</option>
+            </select>
+          </label>
+          <button type="submit" ${status.running ? "disabled" : ""}>Backend speichern</button>
+        </form>
       </div>
 
       <div class="admin-index-panel">
@@ -542,6 +562,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
     const query = asRecord(request.query);
     const info = await getSearchIndexInfo();
     const status = getSearchIndexBuildStatus();
+    const runtimeSettings = await getRuntimeSettings();
 
     const body = `
       <section class="page-header under-title">
@@ -555,7 +576,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
           <a class="button secondary" href="/admin/categories">Kategorien</a>
         </div>
       </section>
-      ${renderIndexManagement(request.csrfToken ?? "", info, status)}
+      ${renderIndexManagement(request.csrfToken ?? "", info, status, runtimeSettings.indexBackend)}
     `;
 
     return reply.type("text/html").send(
@@ -569,6 +590,49 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
         scripts: ["/admin-index.js?v=1"]
       })
     );
+  });
+
+  app.post("/admin/index/backend", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const body = asRecord(request.body);
+    if (!verifySessionCsrfToken(request, body._csrf ?? "")) {
+      return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
+    }
+
+    const previous = (await getRuntimeSettings()).indexBackend;
+    const result = await setIndexBackend(
+      request.currentUser?.username
+        ? {
+            backend: body.backend ?? "",
+            updatedBy: request.currentUser.username
+          }
+        : {
+            backend: body.backend ?? ""
+          }
+    );
+
+    if (!result.ok) {
+      return reply.redirect(`/admin/index?error=${encodeURIComponent(result.error ?? "Backend konnte nicht gesetzt werden.")}`);
+    }
+
+    const consistency = await ensureSearchIndexConsistency();
+
+    await writeAuditLog({
+      action: "admin_index_backend_changed",
+      actorId: request.currentUser?.id,
+      details: {
+        previous,
+        next: result.indexBackend,
+        changed: result.changed,
+        rebuilt: consistency.rebuilt,
+        reason: consistency.reason
+      }
+    });
+
+    const notice = result.changed
+      ? `Index-Backend auf ${result.indexBackend} umgestellt. ${consistency.rebuilt ? "Index wurde neu aufgebaut." : "Index ist bereits aktuell."}`
+      : `Index-Backend bleibt ${result.indexBackend}. ${consistency.rebuilt ? "Index wurde neu aufgebaut." : "Index ist aktuell."}`;
+
+    return reply.redirect(`/admin/index?notice=${encodeURIComponent(notice)}`);
   });
 
   app.get("/admin/api/index/status", { preHandler: [requireAdmin] }, async (_request, reply) => {

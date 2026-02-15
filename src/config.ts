@@ -13,6 +13,8 @@ interface InstallerResult {
   created: boolean;
 }
 
+export type IndexBackend = "flat" | "sqlite";
+
 const appendMissingEnvKeys = (filePath: string): InstallerResult => {
   const result: InstallerResult = { created: false };
   if (!fs.existsSync(filePath)) {
@@ -31,6 +33,7 @@ const appendMissingEnvKeys = (filePath: string): InstallerResult => {
     CONTENT_ENCRYPTION_KEY: generateHex(32),
     SESSION_TTL_HOURS: "12",
     WIKI_TITLE: "FlatWiki",
+    INDEX_BACKEND: "flat",
     BOOTSTRAP_ADMIN_USERNAME: "admin"
   };
 
@@ -56,7 +59,8 @@ const hasExternalConfig = [
   "HOST",
   "PORT",
   "SESSION_TTL_HOURS",
-  "WIKI_TITLE"
+  "WIKI_TITLE",
+  "INDEX_BACKEND"
 ].some((key) => Boolean(process.env[key]));
 
 const installerResult = fs.existsSync(configEnvPath) || !hasExternalConfig
@@ -71,6 +75,11 @@ const parsePositiveInt = (value: string | undefined, fallback: number): number =
   if (!value) return fallback;
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const parseIndexBackend = (value: string | undefined): IndexBackend => {
+  const normalized = (value ?? "").trim().toLowerCase();
+  return normalized === "sqlite" ? "sqlite" : "flat";
 };
 
 const parseEncryptionKey = (value: string | undefined): Buffer | null => {
@@ -145,11 +154,14 @@ export const config = {
   isProduction: process.env.NODE_ENV === "production",
   sessionTtlHours: parsePositiveInt(process.env.SESSION_TTL_HOURS, 12),
   wikiTitle: process.env.WIKI_TITLE ?? "FlatWiki",
+  indexBackend: parseIndexBackend(process.env.INDEX_BACKEND),
   bootstrapAdminUsername: process.env.BOOTSTRAP_ADMIN_USERNAME ?? "admin",
   contentEncryptionKey: runtimeEncryptionKey,
   dataDir: path.join(rootDir, "data"),
   indexDir: path.join(rootDir, "data", "index"),
   searchIndexFile: path.join(rootDir, "data", "index", "pages.json"),
+  sqliteIndexFile: path.join(rootDir, "data", "index", "pages.sqlite"),
+  runtimeSettingsFile: path.join(rootDir, "data", "runtime-settings.json"),
   wikiDir: path.join(rootDir, "data", "wiki"),
   uploadDir: path.join(rootDir, "data", "uploads"),
   categoriesFile: path.join(rootDir, "data", "categories.json"),

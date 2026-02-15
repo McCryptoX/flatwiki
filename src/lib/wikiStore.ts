@@ -8,6 +8,8 @@ import { config } from "../config.js";
 import type { PublicUser, WikiHeading, WikiPage, WikiPageSummary, WikiVisibility } from "../types.js";
 import { findCategoryById, getDefaultCategory, listCategories } from "./categoryStore.js";
 import { ensureDir, readJsonFile, readTextFile, removeFile, writeTextFile } from "./fileStore.js";
+import { getIndexBackend } from "./runtimeSettingsStore.js";
+import { readSqliteIndexEntries } from "./sqliteIndexStore.js";
 
 marked.use({
   gfm: true,
@@ -544,6 +546,29 @@ const getSuggestionIndex = async (options?: { categoryId?: string }): Promise<Su
 };
 
 const loadPersistedSuggestionIndex = async (options?: { categoryId?: string }): Promise<SuggestionIndexEntry[]> => {
+  if (getIndexBackend() === "sqlite") {
+    const sqliteEntries = await readSqliteIndexEntries(options);
+    if (sqliteEntries) {
+      return sqliteEntries.map((entry) => ({
+        summary: {
+          slug: entry.slug,
+          title: entry.title,
+          categoryId: entry.categoryId,
+          categoryName: entry.categoryName,
+          visibility: entry.visibility,
+          allowedUsers: entry.allowedUsers,
+          encrypted: entry.encrypted,
+          tags: entry.tags,
+          excerpt: entry.excerpt,
+          updatedAt: entry.updatedAt
+        },
+        titleLower: entry.title.toLowerCase(),
+        tagsLower: entry.tags.map((tag) => tag.toLowerCase()),
+        searchableText: entry.searchableText
+      }));
+    }
+  }
+
   const fallback: PersistedSearchIndexFile = {
     version: 0,
     generatedAt: "",

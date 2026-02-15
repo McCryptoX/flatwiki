@@ -50,6 +50,7 @@ ensure_key "PASSWORD_PEPPER" "$(random_hex 24)" || true
 ensure_key "CONTENT_ENCRYPTION_KEY" "$(random_hex 32)" || true
 ensure_key "SESSION_TTL_HOURS" "12" || true
 ensure_key "WIKI_TITLE" "FlatWiki" || true
+ensure_key "INDEX_BACKEND" "flat" || true
 ensure_key "BOOTSTRAP_ADMIN_USERNAME" "admin" || true
 
 echo "Installer abgeschlossen: $CONFIG_FILE"

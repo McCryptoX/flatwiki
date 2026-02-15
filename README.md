@@ -11,7 +11,7 @@ FlatWiki ist ein modernes, durchsuchbares Flat-File-Wiki mit Login, Rollen, Admi
 
 ## Features
 
-- Flat-File statt SQL-Datenbank
+- Flat-File-Wiki (Markdown bleibt Quelle der Wahrheit)
 - Wiki-Seiten als Markdown (`data/wiki/*.md`)
 - Login/Logout
 - Admin-Bereich für Benutzerverwaltung
@@ -38,7 +38,8 @@ FlatWiki ist ein modernes, durchsuchbares Flat-File-Wiki mit Login, Rollen, Admi
   - Scanner zum Löschen ungenutzter Bilder
   - optional erzwungenes Löschen auch bei aktiver Einbindung
 - Admin-Suchindex-Verwaltung (`/admin/index`)
-  - Suchindex-Datei manuell neu generieren
+  - Backend umschalten: `flat` oder `sqlite` (Hybrid)
+  - Suchindex manuell neu generieren
   - Live-Fortschritt mit Progress-Balken
 - Beim Löschen eines Artikels: automatische Entfernung nicht mehr referenzierter Upload-Bilder
 - Admin-Kategorienverwaltung (`/admin/categories`)
@@ -220,6 +221,25 @@ Optional:
 - `BOOTSTRAP_ADMIN_USERNAME`
 - `BOOTSTRAP_ADMIN_PASSWORD`
 - `WIKI_TITLE`
+- `INDEX_BACKEND` (`flat` oder `sqlite`, Standard: `flat`)
+
+Hybrid-Modus:
+
+- Mit `INDEX_BACKEND=sqlite` bleiben Artikel weiterhin als Markdown-Dateien die Quelle der Wahrheit.
+- Suche/Metadaten/Rechte-Index werden zusätzlich in `data/index/pages.sqlite` gehalten.
+- Fallback bleibt aktiv: `data/index/pages.json` wird weiterhin gepflegt und bei SQLite-Problemen genutzt.
+- Umschalten ist auch im Admin-Bereich unter `/admin/index` möglich (ohne manuelle Dateibearbeitung).
+- Die Laufzeit-Umschaltung wird in `data/runtime-settings.json` gespeichert (nicht für Git gedacht).
+
+## Git-Upload (ohne lokale Laufzeitdaten)
+
+Folgende Dateien bewusst **nicht** committen: `config.env`, `data/users.json`, `data/sessions.json`, `data/audit.log`, `data/index/*`, `data/uploads/*`.
+
+Empfehlung:
+
+```bash
+git status --short
+```
 
 ## Artikel-Editor
 

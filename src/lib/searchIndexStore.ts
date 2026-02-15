@@ -3,6 +3,14 @@ import path from "node:path";
 import { config } from "../config.js";
 import type { WikiPage, WikiPageSummary } from "../types.js";
 import { ensureDir, readJsonFile, writeJsonFile } from "./fileStore.js";
+import { getIndexBackend } from "./runtimeSettingsStore.js";
+import {
+  getSqliteIndexInfo,
+  readSqliteIndexEntries,
+  removeSqliteIndexEntry,
+  replaceSqliteIndexEntries,
+  upsertSqliteIndexEntry
+} from "./sqliteIndexStore.js";
 import { getPage, listPages } from "./wikiStore.js";
 
 export interface SearchIndexPageEntry extends WikiPageSummary {
@@ -43,6 +51,10 @@ export interface SearchIndexInfo {
 
 const INDEX_VERSION = 2;
 
+const isSqliteBackend = (): boolean => getIndexBackend() === "sqlite";
+
+const getPrimaryIndexFile = (): string => (isSqliteBackend() ? config.sqliteIndexFile : config.searchIndexFile);
+
 const defaultStatus = (): SearchIndexBuildStatus => ({
   running: false,
   phase: "idle",
@@ -50,7 +62,7 @@ const defaultStatus = (): SearchIndexBuildStatus => ({
   total: 0,
   processed: 0,
   percent: 0,
-  indexFile: path.relative(config.rootDir, config.searchIndexFile)
+  indexFile: path.relative(config.rootDir, getPrimaryIndexFile())
 });
 
 let buildStatus: SearchIndexBuildStatus = defaultStatus();
@@ -217,18 +229,32 @@ const runSearchIndexRebuild = async (): Promise<void> => {
     buildStatus = {
       ...buildStatus,
       phase: "writing",
-      message: "Index-Datei wird gespeichert...",
+      message: isSqliteBackend() ? "Suchindex wird gespeichert (SQLite + Fallback)..." : "Index-Datei wird gespeichert...",
       percent: 100
     };
 
+    let sqliteStored = false;
+    if (isSqliteBackend()) {
+      sqliteStored = await replaceSqliteIndexEntries(document.pages, {
+        version: INDEX_VERSION,
+        generatedAt: document.generatedAt
+      });
+    }
+
     await ensureDir(path.dirname(config.searchIndexFile));
     await writeJsonFile(config.searchIndexFile, document);
+
+    const backendLabel = isSqliteBackend()
+      ? sqliteStored
+        ? "SQLite + Flat-Fallback"
+        : "Flat-Fallback (SQLite nicht verfügbar)"
+      : "Flat-Datei";
 
     buildStatus = {
       ...buildStatus,
       running: false,
       phase: "done",
-      message: `Index erfolgreich erstellt (${document.totalPages} Artikel).`,
+      message: `Index erfolgreich erstellt (${document.totalPages} Artikel, Backend: ${backendLabel}).`,
       processed: document.totalPages,
       total: document.totalPages,
       percent: 100,
@@ -246,7 +272,10 @@ const runSearchIndexRebuild = async (): Promise<void> => {
   }
 };
 
-export const getSearchIndexBuildStatus = (): SearchIndexBuildStatus => ({ ...buildStatus });
+export const getSearchIndexBuildStatus = (): SearchIndexBuildStatus => ({
+  ...buildStatus,
+  indexFile: path.relative(config.rootDir, getPrimaryIndexFile())
+});
 
 export const startSearchIndexRebuild = (): { started: boolean; status: SearchIndexBuildStatus; reason?: string } => {
   if (buildPromise) {
@@ -268,6 +297,20 @@ export const startSearchIndexRebuild = (): { started: boolean; status: SearchInd
 };
 
 export const getSearchIndexInfo = async (): Promise<SearchIndexInfo> => {
+  if (isSqliteBackend()) {
+    const sqliteInfo = await getSqliteIndexInfo();
+    if (sqliteInfo) {
+      return {
+        exists: sqliteInfo.exists,
+        indexFile: sqliteInfo.indexFile,
+        version: sqliteInfo.version || INDEX_VERSION,
+        totalPages: sqliteInfo.totalPages,
+        fileSizeBytes: sqliteInfo.fileSizeBytes,
+        ...(sqliteInfo.generatedAt ? { generatedAt: sqliteInfo.generatedAt } : {})
+      };
+    }
+  }
+
   const indexFile = path.relative(config.rootDir, config.searchIndexFile);
   let fileSizeBytes = 0;
 
@@ -304,11 +347,11 @@ export const getSearchIndexInfo = async (): Promise<SearchIndexInfo> => {
   };
 };
 
-const writeSearchIndexDocument = async (pages: SearchIndexPageEntry[]): Promise<void> => {
+const writeSearchIndexDocument = async (pages: SearchIndexPageEntry[], generatedAt = new Date().toISOString()): Promise<void> => {
   const normalizedPages = pages.map((entry) => normalizeIndexEntry(entry)).sort((a, b) => b.updatedAtMs - a.updatedAtMs);
   const document: SearchIndexFile = {
     version: INDEX_VERSION,
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     totalPages: normalizedPages.length,
     pages: normalizedPages
   };
@@ -317,7 +360,7 @@ const writeSearchIndexDocument = async (pages: SearchIndexPageEntry[]): Promise<
   await writeJsonFile(config.searchIndexFile, document);
 };
 
-const checkSearchIndexExists = async (): Promise<boolean> => {
+const checkSearchIndexExistsFlat = async (): Promise<boolean> => {
   try {
     await fs.access(config.searchIndexFile);
     return true;
@@ -326,7 +369,7 @@ const checkSearchIndexExists = async (): Promise<boolean> => {
   }
 };
 
-export const upsertSearchIndexBySlug = async (slug: string): Promise<{ updated: boolean; reason?: string }> => {
+const upsertSearchIndexBySlugFlat = async (slug: string): Promise<{ updated: boolean; reason?: string }> => {
   const normalizedSlug = slug.trim().toLowerCase();
   if (!normalizedSlug) {
     return {
@@ -335,16 +378,9 @@ export const upsertSearchIndexBySlug = async (slug: string): Promise<{ updated: 
     };
   }
 
-  if (buildPromise) {
-    return {
-      updated: false,
-      reason: "rebuild_running"
-    };
-  }
-
   const page = await getPage(normalizedSlug);
   if (!page) {
-    return removeSearchIndexBySlug(normalizedSlug);
+    return removeSearchIndexBySlugFlat(normalizedSlug);
   }
 
   const current = await readSearchIndexFile();
@@ -357,7 +393,7 @@ export const upsertSearchIndexBySlug = async (slug: string): Promise<{ updated: 
   };
 };
 
-export const removeSearchIndexBySlug = async (slug: string): Promise<{ updated: boolean; reason?: string }> => {
+const removeSearchIndexBySlugFlat = async (slug: string): Promise<{ updated: boolean; reason?: string }> => {
   const normalizedSlug = slug.trim().toLowerCase();
   if (!normalizedSlug) {
     return {
@@ -366,14 +402,7 @@ export const removeSearchIndexBySlug = async (slug: string): Promise<{ updated: 
     };
   }
 
-  if (buildPromise) {
-    return {
-      updated: false,
-      reason: "rebuild_running"
-    };
-  }
-
-  const exists = await checkSearchIndexExists();
+  const exists = await checkSearchIndexExistsFlat();
   if (!exists) {
     return {
       updated: false,
@@ -396,6 +425,130 @@ export const removeSearchIndexBySlug = async (slug: string): Promise<{ updated: 
   };
 };
 
+const getConsistencyReasonFromEntries = (
+  pages: WikiPageSummary[],
+  entries: Array<
+    Pick<
+      WikiPageSummary,
+      "slug" | "title" | "categoryId" | "categoryName" | "visibility" | "allowedUsers" | "encrypted" | "tags" | "excerpt" | "updatedAt"
+    >
+  >
+): string => {
+  if (entries.length !== pages.length) {
+    return "page_count_mismatch";
+  }
+
+  const indexedBySlug = new Map(entries.map((entry) => [entry.slug, entry]));
+  for (const page of pages) {
+    const indexed = indexedBySlug.get(page.slug);
+    if (!indexed) {
+      return "missing_page";
+    }
+
+    if (buildEntrySignature(indexed) !== buildEntrySignature(page)) {
+      return "changed_page_metadata";
+    }
+  }
+
+  return "";
+};
+
+export const upsertSearchIndexBySlug = async (slug: string): Promise<{ updated: boolean; reason?: string }> => {
+  const normalizedSlug = slug.trim().toLowerCase();
+  if (!normalizedSlug) {
+    return {
+      updated: false,
+      reason: "invalid_slug"
+    };
+  }
+
+  if (buildPromise) {
+    return {
+      updated: false,
+      reason: "rebuild_running"
+    };
+  }
+
+  if (!isSqliteBackend()) {
+    return upsertSearchIndexBySlugFlat(normalizedSlug);
+  }
+
+  const page = await getPage(normalizedSlug);
+  if (!page) {
+    return removeSearchIndexBySlug(normalizedSlug);
+  }
+
+  const generatedAt = new Date().toISOString();
+  const entry = buildIndexEntryFromPage(page);
+  const sqliteUpdated = await upsertSqliteIndexEntry(entry, {
+    version: INDEX_VERSION,
+    generatedAt
+  });
+
+  // Flat-Datei als robuster Fallback wird weiterhin mitgeführt.
+  await upsertSearchIndexBySlugFlat(normalizedSlug);
+
+  if (!sqliteUpdated) {
+    return {
+      updated: true,
+      reason: "sqlite_unavailable_flat_fallback"
+    };
+  }
+
+  return {
+    updated: true,
+    reason: "sqlite"
+  };
+};
+
+export const removeSearchIndexBySlug = async (slug: string): Promise<{ updated: boolean; reason?: string }> => {
+  const normalizedSlug = slug.trim().toLowerCase();
+  if (!normalizedSlug) {
+    return {
+      updated: false,
+      reason: "invalid_slug"
+    };
+  }
+
+  if (buildPromise) {
+    return {
+      updated: false,
+      reason: "rebuild_running"
+    };
+  }
+
+  if (!isSqliteBackend()) {
+    return removeSearchIndexBySlugFlat(normalizedSlug);
+  }
+
+  const generatedAt = new Date().toISOString();
+  const sqliteResult = await removeSqliteIndexEntry(normalizedSlug, {
+    version: INDEX_VERSION,
+    generatedAt
+  });
+
+  const flatResult = await removeSearchIndexBySlugFlat(normalizedSlug);
+
+  if (!sqliteResult.available) {
+    return {
+      updated: flatResult.updated,
+      reason: flatResult.updated ? "sqlite_unavailable_flat_fallback" : "sqlite_unavailable"
+    };
+  }
+
+  const reason = sqliteResult.updated ? "sqlite" : flatResult.reason;
+  if (reason) {
+    return {
+      updated: sqliteResult.updated || flatResult.updated,
+      reason
+    };
+  }
+
+  return {
+    updated: sqliteResult.updated || flatResult.updated
+  };
+};
+
 export const ensureSearchIndexConsistency = async (): Promise<{ rebuilt: boolean; reason: string }> => {
   if (buildPromise) {
     await buildPromise;
@@ -405,30 +558,32 @@ export const ensureSearchIndexConsistency = async (): Promise<{ rebuilt: boolean
     };
   }
 
-  const exists = await checkSearchIndexExists();
   const pages = await listPages({ forceFileScan: true });
-  const indexDocument = exists ? await readSearchIndexFile() : emptyIndexFile();
-
   let reason = "";
-  if (!exists) {
-    reason = "index_missing";
-  } else if (indexDocument.version !== INDEX_VERSION) {
-    reason = "version_mismatch";
-  } else if (indexDocument.pages.length !== pages.length) {
-    reason = "page_count_mismatch";
-  } else {
-    const indexedBySlug = new Map(indexDocument.pages.map((entry) => [entry.slug, entry]));
-    for (const page of pages) {
-      const indexed = indexedBySlug.get(page.slug);
-      if (!indexed) {
-        reason = "missing_page";
-        break;
-      }
 
-      if (buildEntrySignature(indexed) !== buildEntrySignature(page)) {
-        reason = "changed_page_metadata";
-        break;
-      }
+  if (isSqliteBackend()) {
+    const sqliteInfo = await getSqliteIndexInfo();
+    const sqliteEntries = await readSqliteIndexEntries();
+
+    if (!sqliteInfo || sqliteEntries === null) {
+      reason = "sqlite_unavailable";
+    } else if (!sqliteInfo.exists) {
+      reason = "index_missing";
+    } else if (sqliteInfo.version !== INDEX_VERSION) {
+      reason = "version_mismatch";
+    } else {
+      reason = getConsistencyReasonFromEntries(pages, sqliteEntries);
+    }
+  } else {
+    const exists = await checkSearchIndexExistsFlat();
+    const indexDocument = exists ? await readSearchIndexFile() : emptyIndexFile();
+
+    if (!exists) {
+      reason = "index_missing";
+    } else if (indexDocument.version !== INDEX_VERSION) {
+      reason = "version_mismatch";
+    } else {
+      reason = getConsistencyReasonFromEntries(pages, indexDocument.pages);
     }
   }
 

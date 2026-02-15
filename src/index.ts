@@ -10,6 +10,7 @@ import { config } from "./config.js";
 import { attachCurrentUser } from "./lib/auth.js";
 import { ensureDefaultCategory } from "./lib/categoryStore.js";
 import { ensureDir, ensureFile } from "./lib/fileStore.js";
+import { initRuntimeSettings } from "./lib/runtimeSettingsStore.js";
 import { ensureSearchIndexConsistency } from "./lib/searchIndexStore.js";
 import { purgeExpiredSessions } from "./lib/sessionStore.js";
 import { ensureInitialAdmin } from "./lib/userStore.js";
@@ -34,6 +35,7 @@ const bootstrapDataStorage = async (): Promise<void> => {
   await ensureFile(config.usersFile, "[]\n");
   await ensureFile(config.sessionsFile, "[]\n");
   await ensureFile(config.auditFile, "");
+  await ensureFile(config.runtimeSettingsFile, "{}\n");
 };
 
 const registerPlugins = async (): Promise<void> => {
@@ -103,6 +105,7 @@ const registerRoutes = async (): Promise<void> => {
 const start = async (): Promise<void> => {
   try {
     await bootstrapDataStorage();
+    await initRuntimeSettings();
     await ensureDefaultCategory();
     const indexCheck = await ensureSearchIndexConsistency();
     if (indexCheck.rebuilt) {
