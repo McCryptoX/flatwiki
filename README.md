@@ -27,6 +27,11 @@ FlatWiki ist ein modernes, durchsuchbares Flat-File-Wiki mit Login, Rollen, Admi
 - Bild-Upload im Editor (1-x Dateien, automatische eindeutige Dateinamen)
 - Visueller Markdown-Editor (Toolbar + Live-Vorschau)
 - Automatische Artikel-Navigation (links) aus Markdown-Überschriften
+- Admin-Bildverwaltung mit Referenzprüfung (`/admin/media`)
+  - zeigt pro Bild, ob es eingebunden ist und in welchen Artikeln
+  - Scanner zum Löschen ungenutzter Bilder
+  - optional erzwungenes Löschen auch bei aktiver Einbindung
+- Beim Löschen eines Artikels: automatische Entfernung nicht mehr referenzierter Upload-Bilder
 - Visueller Setup-Assistent beim ersten Start (`/setup`)
 - Sicherheitsgrundlagen: `scrypt`, CSRF, Rate-Limit, Security-Header, Audit-Log
 
@@ -215,6 +220,16 @@ Optional:
 - Live-Vorschau im Editor per Button auf "Vorschau".
 - Überschriften (`##`, `###`, ...) erzeugen automatisch eine linke Artikel-Navigation.
 - Format-Hilfe als Wiki-Seite: `/wiki/markdown-formatierung-howto`
+
+## Bildverwaltung und Cleanup
+
+- Admins können unter `/admin/media` alle Upload-Dateien verwalten.
+- Für jede Datei zeigt FlatWiki:
+  - ob sie eingebunden ist
+  - in welchen Artikeln sie referenziert wird
+  - Dateigröße und Änderungszeit
+- Der Button "Ungenutzte Bilder löschen" entfernt alle nicht referenzierten Dateien automatisch.
+- Beim Löschen einer Wiki-Seite werden deren Bildreferenzen geprüft und danach ungenutzte Upload-Dateien ebenfalls automatisch entfernt.
 
 ## Repository-Struktur
 

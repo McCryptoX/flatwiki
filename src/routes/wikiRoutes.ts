@@ -6,6 +6,7 @@ import { pipeline } from "node:stream/promises";
 import { requireAdmin, requireAuth, verifySessionCsrfToken } from "../lib/auth.js";
 import { writeAuditLog } from "../lib/audit.js";
 import { config } from "../config.js";
+import { cleanupUnusedUploads, extractUploadReferencesFromMarkdown } from "../lib/mediaStore.js";
 import { escapeHtml, formatDate, renderLayout, renderPageList } from "../lib/render.js";
 import {
   deletePage,
@@ -564,18 +565,44 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
       return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
     }
 
+    const page = await getPage(params.slug);
+    if (!page) {
+      return reply.redirect("/?error=Seite+nicht+gefunden");
+    }
+
+    const candidateUploads = extractUploadReferencesFromMarkdown(page.content);
     const deleted = await deletePage(params.slug);
     if (!deleted) {
       return reply.redirect("/?error=Seite+nicht+gefunden");
     }
 
+    let removedUploadsCount = 0;
+    if (candidateUploads.length > 0) {
+      try {
+        const cleanupResult = await cleanupUnusedUploads({
+          candidateFileNames: candidateUploads
+        });
+        removedUploadsCount = cleanupResult.deleted.length;
+      } catch (error) {
+        request.log.warn({ error, slug: params.slug }, "Upload-Cleanup nach Seitenlöschung fehlgeschlagen");
+      }
+    }
+
     await writeAuditLog({
       action: "wiki_page_deleted",
       actorId: request.currentUser?.id,
-      targetId: params.slug
+      targetId: params.slug,
+      details: {
+        removedUploadsCount
+      }
     });
 
-    return reply.redirect("/?notice=Seite+gel%C3%B6scht");
+    const notice =
+      removedUploadsCount > 0
+        ? `Seite gelöscht, ${removedUploadsCount} ungenutzte Bilddatei(en) entfernt`
+        : "Seite gelöscht";
+
+    return reply.redirect(`/?notice=${encodeURIComponent(notice)}`);
   });
 
   app.get("/search", { preHandler: [requireAuth] }, async (request, reply) => {

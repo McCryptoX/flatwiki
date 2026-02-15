@@ -540,6 +540,41 @@ th {
   color: var(--muted);
 }
 
+.media-ref-list {
+  display: grid;
+  gap: 0.2rem;
+  font-size: 0.84rem;
+}
+
+.media-ref-list a {
+  text-decoration: none;
+}
+
+.media-ref-list a:hover {
+  text-decoration: underline;
+}
+
+.media-ref-empty {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.media-missing-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.42rem;
+}
+
+.media-missing-list li {
+  line-height: 1.45;
+}
+
+.media-missing-list code {
+  font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.84rem;
+}
+
 .wiki-page {
   padding: 1.3rem;
 }
