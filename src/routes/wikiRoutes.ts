@@ -170,8 +170,6 @@ const renderEditorForm = (params: {
         </form>
         <p class="muted-note small">Nach dem Upload werden Markdown-Zeilen automatisch in den Inhalt eingefügt.</p>
         <textarea class="upload-markdown-output" rows="6" readonly placeholder="Upload-Ausgabe erscheint hier"></textarea>
-        <hr />
-        <p class="muted-note small"><a href="/wiki/markdown-formatierung-howto">Markdown-HowTo öffnen</a></p>
       </aside>
     </div>
   </section>
@@ -334,7 +332,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         user: request.currentUser,
         csrfToken: request.csrfToken,
         error: query.error,
-        scripts: ["/editor.js"]
+        scripts: ["/wiki-ui.js?v=3"]
       })
     );
   });
@@ -416,7 +414,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         user: request.currentUser,
         csrfToken: request.csrfToken,
         error: query.error,
-        scripts: ["/editor.js"]
+        scripts: ["/wiki-ui.js?v=3"]
       })
     );
   });

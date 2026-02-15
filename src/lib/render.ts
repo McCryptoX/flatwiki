@@ -72,7 +72,7 @@ export const renderLayout = (options: LayoutOptions): string => {
     options.error ? `<div class="flash error">${escapeHtml(options.error)}</div>` : ""
   ].join("\n");
 
-  const scripts = [...(user ? ["/search-suggest.js"] : []), ...(options.scripts ?? [])]
+  const scripts = [...(user ? ["/search-suggest.js?v=2"] : []), ...(options.scripts ?? [])]
     .filter((scriptPath) => scriptPath.startsWith("/"))
     .map((scriptPath) => `<script src="${escapeHtml(scriptPath)}" defer></script>`)
     .join("\n");
