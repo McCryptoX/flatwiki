@@ -8,6 +8,8 @@ import { config } from "../config.js";
 import type { PublicUser, WikiHeading, WikiPage, WikiPageSummary, WikiVisibility } from "../types.js";
 import { findCategoryById, getDefaultCategory, listCategories } from "./categoryStore.js";
 import { ensureDir, readJsonFile, readTextFile, removeFile, writeTextFile } from "./fileStore.js";
+import { listGroupIdsForUser } from "./groupStore.js";
+import { createPageVersionSnapshot, getPageVersion, listPageVersions, type PageVersionSummary } from "./pageVersionStore.js";
 import { getIndexBackend } from "./runtimeSettingsStore.js";
 import { readSqliteIndexEntries } from "./sqliteIndexStore.js";
 
@@ -47,6 +49,11 @@ interface PageCacheEntry {
   mtimeMs: number;
   size: number;
   page: WikiPage;
+}
+
+interface SnapshotSourceMeta {
+  updatedAt?: string;
+  updatedBy?: string;
 }
 
 let suggestionIndex: SuggestionIndexEntry[] | null = null;
@@ -163,6 +170,21 @@ const normalizeAllowedUsers = (value: unknown): string[] => {
   return result;
 };
 
+const normalizeAllowedGroups = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of value) {
+    const normalized = String(item).trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(normalized);
+  }
+
+  return result;
+};
+
 const getWikiShard = (slug: string): string => slug.slice(0, 2).replace(/[^a-z0-9]/g, "_").padEnd(2, "_");
 
 const resolveLegacyPagePath = (slug: string): string => path.join(config.wikiDir, `${slug}.md`);
@@ -241,6 +263,42 @@ const resolveExistingPagePath = async (slug: string): Promise<string | null> => 
   return matches[0] ?? null;
 };
 
+const snapshotCurrentPageFile = async (input: {
+  slug: string;
+  actor: string;
+  reason: "update" | "delete" | "restore-backup";
+  source?: SnapshotSourceMeta;
+}): Promise<{ ok: boolean; error?: string; created: boolean }> => {
+  const existingPath = await resolveExistingPagePath(input.slug);
+  if (!existingPath) {
+    return { ok: true, created: false };
+  }
+
+  const raw = await readTextFile(existingPath);
+  if (!raw || raw.trim().length < 1) {
+    return { ok: true, created: false };
+  }
+
+  const snapshot = await createPageVersionSnapshot({
+    slug: input.slug,
+    reason: input.reason,
+    createdBy: input.actor.trim() || "unknown",
+    ...(input.source?.updatedAt ? { sourceUpdatedAt: input.source.updatedAt } : {}),
+    ...(input.source?.updatedBy ? { sourceUpdatedBy: input.source.updatedBy } : {}),
+    fileContent: raw
+  });
+
+  if (!snapshot.ok) {
+    return {
+      ok: false,
+      error: snapshot.error ?? "Versionierung fehlgeschlagen.",
+      created: false
+    };
+  }
+
+  return { ok: true, created: true };
+};
+
 const encryptContent = (plaintext: string): EncryptedPayload | null => {
   const key = config.contentEncryptionKey;
   if (!key) return null;
@@ -306,6 +364,7 @@ const parseMarkdownPageFromPath = async (slug: string, filePath: string, fallbac
   const category = await resolveCategoryMeta(String(data.categoryId ?? "").trim());
   const visibility = normalizeVisibility(data.visibility);
   const allowedUsers = visibility === "restricted" ? normalizeAllowedUsers(data.allowedUsers) : [];
+  const allowedGroups = visibility === "restricted" ? normalizeAllowedGroups(data.allowedGroups) : [];
 
   const title = String(data.title ?? slug).trim() || slug;
   const tags = normalizeTags(data.tags);
@@ -351,6 +410,7 @@ const parseMarkdownPageFromPath = async (slug: string, filePath: string, fallbac
       categoryName: category.name,
       visibility,
       allowedUsers,
+      allowedGroups,
       encrypted,
       encryptionState,
       tags,
@@ -373,6 +433,7 @@ const parseMarkdownPageFromPath = async (slug: string, filePath: string, fallbac
     categoryName: category.name,
     visibility,
     allowedUsers,
+    allowedGroups,
     encrypted,
     encryptionState,
     tags,
@@ -393,6 +454,7 @@ const toSummary = (page: WikiPage): WikiPageSummary => ({
   categoryName: page.categoryName,
   visibility: page.visibility,
   allowedUsers: page.allowedUsers,
+  allowedGroups: page.allowedGroups,
   encrypted: page.encrypted,
   tags: page.tags,
   excerpt: page.encrypted && page.encryptionState !== "ok" ? "Verschlüsselter Inhalt" : cleanTextExcerpt(page.content).slice(0, 220),
@@ -403,6 +465,7 @@ const clonePage = (page: WikiPage): WikiPage => ({
   ...page,
   tags: [...page.tags],
   allowedUsers: [...page.allowedUsers],
+  allowedGroups: [...page.allowedGroups],
   tableOfContents: page.tableOfContents.map((heading) => ({ ...heading }))
 });
 
@@ -420,13 +483,20 @@ export const slugifyTitle = (title: string): string => {
 export const isValidSlug = (slug: string): boolean => SLUG_PATTERN.test(slug);
 
 export const canUserAccessPage = (
-  page: Pick<WikiPage, "visibility" | "allowedUsers"> | Pick<WikiPageSummary, "visibility" | "allowedUsers">,
+  page:
+    | Pick<WikiPage, "visibility" | "allowedUsers" | "allowedGroups">
+    | Pick<WikiPageSummary, "visibility" | "allowedUsers" | "allowedGroups">,
   user: PublicUser | undefined
 ): boolean => {
   if (!user) return false;
   if (user.role === "admin") return true;
   if (page.visibility === "all") return true;
-  return page.allowedUsers.includes(user.username.toLowerCase());
+  const username = user.username.toLowerCase();
+  if (page.allowedUsers.includes(username)) return true;
+
+  const userGroupIds = user.groupIds ?? [];
+  if (userGroupIds.length < 1 || page.allowedGroups.length < 1) return false;
+  return page.allowedGroups.some((groupId) => userGroupIds.includes(groupId));
 };
 
 const getPageFromPathWithCache = async (slug: string, filePath: string): Promise<WikiPage | null> => {
@@ -506,7 +576,16 @@ export const filterAccessiblePageSummaries = async (
 ): Promise<WikiPageSummary[]> => {
   if (!user) return [];
   if (user.role === "admin") return summaries;
-  return summaries.filter((summary) => canUserAccessPage(summary, user));
+
+  const userWithGroups: PublicUser =
+    user.groupIds && user.groupIds.length >= 0
+      ? user
+      : {
+          ...user,
+          groupIds: await listGroupIdsForUser(user.username)
+        };
+
+  return summaries.filter((summary) => canUserAccessPage(summary, userWithGroups));
 };
 
 export const listPagesForUser = async (
@@ -557,6 +636,7 @@ const loadPersistedSuggestionIndex = async (options?: { categoryId?: string }): 
           categoryName: entry.categoryName,
           visibility: entry.visibility,
           allowedUsers: entry.allowedUsers,
+          allowedGroups: entry.allowedGroups,
           encrypted: entry.encrypted,
           tags: entry.tags,
           excerpt: entry.excerpt,
@@ -597,6 +677,9 @@ const loadPersistedSuggestionIndex = async (options?: { categoryId?: string }): 
       visibility: raw.visibility === "restricted" ? "restricted" : "all",
       allowedUsers: Array.isArray(raw.allowedUsers)
         ? raw.allowedUsers.map((entry) => String(entry).trim().toLowerCase()).filter((entry) => entry.length > 0)
+        : [],
+      allowedGroups: Array.isArray(raw.allowedGroups)
+        ? raw.allowedGroups.map((entry) => String(entry).trim()).filter((entry) => entry.length > 0)
         : [],
       encrypted: raw.encrypted === true,
       tags: Array.isArray(raw.tags) ? raw.tags.map((tag) => String(tag).trim().toLowerCase()).filter(Boolean) : [],
@@ -652,6 +735,7 @@ export interface SavePageInput {
   categoryId?: string;
   visibility?: WikiVisibility;
   allowedUsers?: string[];
+  allowedGroups?: string[];
   encrypted?: boolean;
 }
 
@@ -675,9 +759,13 @@ export const savePage = async (input: SavePageInput): Promise<{ ok: boolean; err
   const category = (await findCategoryById(input.categoryId ?? "")) ?? (await getDefaultCategory());
   const visibility = input.visibility === "restricted" ? "restricted" : "all";
   const allowedUsers = visibility === "restricted" ? normalizeAllowedUsers(input.allowedUsers ?? []) : [];
+  const allowedGroups = visibility === "restricted" ? normalizeAllowedGroups(input.allowedGroups ?? []) : [];
 
-  if (visibility === "restricted" && allowedUsers.length < 1) {
-    return { ok: false, error: "Bei eingeschränktem Zugriff muss mindestens ein Benutzer freigegeben werden." };
+  if (visibility === "restricted" && allowedUsers.length < 1 && allowedGroups.length < 1) {
+    return {
+      ok: false,
+      error: "Bei eingeschränktem Zugriff muss mindestens ein Benutzer oder eine Gruppe freigegeben werden."
+    };
   }
 
   const encrypted = Boolean(input.encrypted);
@@ -699,6 +787,7 @@ export const savePage = async (input: SavePageInput): Promise<{ ok: boolean; err
     categoryId: category.id,
     visibility,
     allowedUsers,
+    allowedGroups,
     encrypted,
     tags,
     createdBy,
@@ -720,6 +809,25 @@ export const savePage = async (input: SavePageInput): Promise<{ ok: boolean; err
     markdownBody = "";
   }
 
+  if (existingPage) {
+    const snapshotResult = await snapshotCurrentPageFile({
+      slug,
+      actor: input.updatedBy,
+      reason: "update",
+      source: {
+        updatedAt: existingPage.updatedAt,
+        updatedBy: existingPage.updatedBy
+      }
+    });
+
+    if (!snapshotResult.ok) {
+      return {
+        ok: false,
+        error: snapshotResult.error ?? "Versionierung vor dem Speichern fehlgeschlagen."
+      };
+    }
+  }
+
   const frontmatter = matter.stringify(markdownBody, frontmatterData);
   await writeTextFile(targetPath, frontmatter.endsWith("\n") ? frontmatter : `${frontmatter}\n`);
 
@@ -736,13 +844,39 @@ export const savePage = async (input: SavePageInput): Promise<{ ok: boolean; err
   return { ok: true };
 };
 
-export const deletePage = async (slug: string): Promise<boolean> => {
+export const deletePage = async (
+  slug: string,
+  options?: { deletedBy?: string }
+): Promise<{ ok: boolean; deleted: boolean; error?: string }> => {
   const normalizedSlug = slug.trim().toLowerCase();
-  if (!isValidSlug(normalizedSlug)) return false;
+  if (!isValidSlug(normalizedSlug)) return { ok: false, deleted: false, error: "Ungültiger Slug." };
 
+  const existingPage = await getPage(normalizedSlug);
   const pagePaths = await resolveAllPagePaths(normalizedSlug);
   if (pagePaths.length < 1) {
-    return false;
+    return { ok: true, deleted: false };
+  }
+
+  const snapshotResult = await snapshotCurrentPageFile({
+    slug: normalizedSlug,
+    actor: options?.deletedBy ?? "unknown",
+    reason: "delete",
+    ...(existingPage
+      ? {
+          source: {
+            updatedAt: existingPage.updatedAt,
+            updatedBy: existingPage.updatedBy
+          }
+        }
+      : {})
+  });
+
+  if (!snapshotResult.ok) {
+    return {
+      ok: false,
+      deleted: false,
+      error: snapshotResult.error ?? "Versionierung vor dem Löschen fehlgeschlagen."
+    };
   }
 
   for (const pagePath of pagePaths) {
@@ -751,7 +885,7 @@ export const deletePage = async (slug: string): Promise<boolean> => {
   lastWikiMutationAtMs = Date.now();
   pageRenderCache.delete(normalizedSlug);
   suggestionIndexDirty = true;
-  return true;
+  return { ok: true, deleted: true };
 };
 
 export const searchPages = async (query: string, options?: { categoryId?: string }): Promise<WikiPageSummary[]> => {
@@ -868,6 +1002,81 @@ export const renderMarkdownPreview = (markdown: string): string => {
   }
 
   return renderMarkdownToHtmlWithAnchors(content).html;
+};
+
+export const listPageHistory = async (slugInput: string, limit = 100): Promise<PageVersionSummary[]> => {
+  const slug = slugInput.trim().toLowerCase();
+  if (!isValidSlug(slug)) return [];
+  return listPageVersions(slug, limit);
+};
+
+export const getPageVersionRawContent = async (slugInput: string, versionId: string): Promise<string | null> => {
+  const slug = slugInput.trim().toLowerCase();
+  if (!isValidSlug(slug)) return null;
+  const version = await getPageVersion(slug, versionId);
+  return version?.fileContent ?? null;
+};
+
+export const restorePageVersion = async (input: {
+  slug: string;
+  versionId: string;
+  restoredBy: string;
+}): Promise<{ ok: boolean; error?: string }> => {
+  const slug = input.slug.trim().toLowerCase();
+  if (!isValidSlug(slug)) {
+    return {
+      ok: false,
+      error: "Ungültiger Slug."
+    };
+  }
+
+  const version = await getPageVersion(slug, input.versionId);
+  if (!version) {
+    return {
+      ok: false,
+      error: "Version nicht gefunden."
+    };
+  }
+
+  const existingPage = await getPage(slug);
+  const backupSnapshot = await snapshotCurrentPageFile({
+    slug,
+    actor: input.restoredBy,
+    reason: "restore-backup",
+    ...(existingPage
+      ? {
+          source: {
+            updatedAt: existingPage.updatedAt,
+            updatedBy: existingPage.updatedBy
+          }
+        }
+      : {})
+  });
+
+  if (!backupSnapshot.ok) {
+    return {
+      ok: false,
+      error: backupSnapshot.error ?? "Sicherung vor Restore fehlgeschlagen."
+    };
+  }
+
+  const targetPath = resolvePagePath(slug);
+  const existingPaths = await resolveAllPagePaths(slug);
+  const raw = version.fileContent.endsWith("\n") ? version.fileContent : `${version.fileContent}\n`;
+
+  await writeTextFile(targetPath, raw);
+
+  const normalizedTarget = path.normalize(targetPath);
+  for (const existingPath of existingPaths) {
+    if (path.normalize(existingPath) === normalizedTarget) continue;
+    await removeFile(existingPath);
+  }
+
+  lastWikiMutationAtMs = Date.now();
+  pageRenderCache.delete(slug);
+  suggestionIndexDirty = true;
+
+  return { ok: true };
 };
 
 const isPageCreatedByUser = (page: Pick<WikiPage, "createdBy" | "updatedBy">, username: string): boolean => {

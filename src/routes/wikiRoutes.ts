@@ -6,6 +6,7 @@ import { pipeline } from "node:stream/promises";
 import { requireAdmin, requireAuth, verifySessionCsrfToken } from "../lib/auth.js";
 import { writeAuditLog } from "../lib/audit.js";
 import { findCategoryById, getDefaultCategory, listCategories } from "../lib/categoryStore.js";
+import { listGroups } from "../lib/groupStore.js";
 import { config } from "../config.js";
 import { ensureDir } from "../lib/fileStore.js";
 import { cleanupUnusedUploads, extractUploadReferencesFromMarkdown } from "../lib/mediaStore.js";
@@ -17,9 +18,12 @@ import {
   deletePage,
   filterAccessiblePageSummaries,
   getPage,
+  getPageVersionRawContent,
   isValidSlug,
+  listPageHistory,
   listPagesForUser,
   renderMarkdownPreview,
+  restorePageVersion,
   savePage,
   searchPages,
   slugifyTitle,
@@ -60,6 +64,20 @@ const normalizeUsernames = (values: string[]): string[] => {
 
   for (const value of values) {
     const normalized = value.trim().toLowerCase();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    output.push(normalized);
+  }
+
+  return output;
+};
+
+const normalizeIds = (values: string[]): string[] => {
+  const seen = new Set<string>();
+  const output: string[] = [];
+
+  for (const value of values) {
+    const normalized = value.trim();
     if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
     output.push(normalized);
@@ -225,6 +243,12 @@ const renderPager = (
   `;
 };
 
+const formatHistoryReason = (reason: string): string => {
+  if (reason === "delete") return "Löschen";
+  if (reason === "restore-backup") return "Restore-Sicherung";
+  return "Bearbeiten";
+};
+
 const renderEditorForm = (params: {
   mode: "new" | "edit";
   action: string;
@@ -239,7 +263,9 @@ const renderEditorForm = (params: {
   selectedCategoryId: string;
   visibility: "all" | "restricted";
   allowedUsers: string[];
+  allowedGroups: string[];
   availableUsers: Array<{ username: string; displayName: string }>;
+  availableGroups: Array<{ id: string; name: string; description: string }>;
   encrypted: boolean;
   encryptionAvailable: boolean;
 }): string => `
@@ -280,33 +306,56 @@ const renderEditorForm = (params: {
             <option value="restricted" ${params.visibility === "restricted" ? "selected" : ""}>Nur ausgewählte Benutzer</option>
           </select>
         </label>
-        <fieldset class="stack access-user-picker" data-allowed-users-box ${params.visibility === "restricted" ? "" : "hidden"}>
+        <fieldset class="stack access-user-picker" data-restricted-only ${params.visibility === "restricted" ? "" : "hidden"}>
           <legend>Freigegebene Benutzer (bei eingeschränktem Zugriff)</legend>
           <div class="picker-toolbar">
             <input
               type="search"
               class="tiny"
               placeholder="Benutzer filtern (Name oder Username)"
-              data-allowed-users-filter
+              data-picker-filter
               autocomplete="off"
             />
-            <span class="muted-note small" data-allowed-users-count></span>
+            <span class="muted-note small" data-picker-count></span>
           </div>
-          <div class="stack allowed-users-list" data-allowed-users-list>
+          <div class="stack allowed-users-list" data-picker-list>
             ${
               params.availableUsers.length > 0
                 ? params.availableUsers
                     .map((user) => {
                       const checked = params.allowedUsers.includes(user.username) ? "checked" : "";
                       const searchData = `${user.displayName} ${user.username}`;
-                      return `<label class="checkline user-checkline" data-user-search="${escapeHtml(searchData.toLowerCase())}"><input type="checkbox" name="allowedUsers" value="${escapeHtml(user.username)}" ${checked} /> <span>${escapeHtml(user.displayName)} (${escapeHtml(user.username)})</span></label>`;
+                      return `<label class="checkline user-checkline" data-search="${escapeHtml(searchData.toLowerCase())}"><input type="checkbox" name="allowedUsers" value="${escapeHtml(user.username)}" ${checked} /> <span>${escapeHtml(user.displayName)} (${escapeHtml(user.username)})</span></label>`;
                     })
                     .join("")
                 : '<p class="muted-note">Keine Benutzer verfügbar.</p>'
             }
           </div>
         </fieldset>
-        <label class="checkline"><input type="checkbox" name="encrypted" value="1" ${params.encrypted ? "checked" : ""} ${
+        <fieldset class="stack access-user-picker" data-restricted-only ${params.visibility === "restricted" ? "" : "hidden"}>
+          <legend>Freigegebene Gruppen (optional)</legend>
+          <div class="picker-toolbar">
+            <input type="search" class="tiny" placeholder="Gruppen filtern" data-picker-filter autocomplete="off" />
+            <span class="muted-note small" data-picker-count></span>
+          </div>
+          <div class="stack allowed-users-list" data-picker-list>
+            ${
+              params.availableGroups.length > 0
+                ? params.availableGroups
+                    .map((group) => {
+                      const checked = params.allowedGroups.includes(group.id) ? "checked" : "";
+                      const searchData = `${group.name} ${group.description}`;
+                      const description = group.description
+                        ? `<span class="muted-note small">${escapeHtml(group.description)}</span>`
+                        : "";
+                      return `<label class="checkline user-checkline" data-search="${escapeHtml(searchData.toLowerCase())}"><input type="checkbox" name="allowedGroups" value="${escapeHtml(group.id)}" ${checked} /> <span>${escapeHtml(group.name)} ${description}</span></label>`;
+                    })
+                    .join("")
+                : '<p class="muted-note">Keine Gruppen vorhanden.</p>'
+            }
+          </div>
+        </fieldset>
+        <label class="checkline standalone-checkline"><input type="checkbox" name="encrypted" value="1" ${params.encrypted ? "checked" : ""} ${
           params.encryptionAvailable ? "" : "disabled"
         } /> <span>Inhalt im Dateisystem verschlüsseln (AES-256)</span></label>
         ${
@@ -371,6 +420,7 @@ const buildEditorRedirectQuery = (params: {
   categoryId: string;
   visibility: "all" | "restricted";
   allowedUsers: string[];
+  allowedGroups: string[];
   encrypted: boolean;
 }): string => {
   const query = new URLSearchParams();
@@ -384,6 +434,7 @@ const buildEditorRedirectQuery = (params: {
   query.set("categoryId", params.categoryId);
   query.set("visibility", params.visibility);
   query.set("allowedUsers", params.allowedUsers.join(","));
+  query.set("allowedGroups", params.allowedGroups.join(","));
   query.set("encrypted", params.encrypted ? "1" : "0");
   return query.toString();
 };
@@ -539,6 +590,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
             <p class="meta">Zuletzt geändert: ${escapeHtml(page.updatedAt)} | von ${escapeHtml(page.updatedBy)}</p>
             <div class="actions">
               <a class="button secondary" href="/wiki/${encodeURIComponent(page.slug)}/edit">Bearbeiten</a>
+              <a class="button secondary" href="/wiki/${encodeURIComponent(page.slug)}/history">Historie</a>
               ${
                 request.currentUser?.role === "admin"
                   ? `<form method="post" action="/wiki/${encodeURIComponent(page.slug)}/delete" onsubmit="return confirm('Seite wirklich löschen?')"><input type="hidden" name="_csrf" value="${escapeHtml(request.csrfToken ?? "")}" /><button class="danger" type="submit">Löschen</button></form>`
@@ -566,6 +618,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     const query = asObject(request.query);
     const categories = await listCategories();
     const defaultCategory = await getDefaultCategory();
+    const groups = await listGroups();
     const users = (await listUsers())
       .filter((user) => !user.disabled)
       .map((user) => ({ username: user.username, displayName: user.displayName }));
@@ -577,6 +630,8 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     const selectedCategoryId = readSingle(query.categoryId) || defaultCategory.id;
     const visibility = readSingle(query.visibility) === "restricted" ? "restricted" : "all";
     const allowedUsers = normalizeUsernames(readMany(query.allowedUsers));
+    const knownGroupIds = new Set(groups.map((group) => group.id));
+    const allowedGroups = normalizeIds(readMany(query.allowedGroups)).filter((groupId) => knownGroupIds.has(groupId));
     const encrypted = readSingle(query.encrypted) === "1";
 
     const body = renderEditorForm({
@@ -592,7 +647,9 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
       selectedCategoryId,
       visibility,
       allowedUsers,
+      allowedGroups,
       availableUsers: users,
+      availableGroups: groups.map((group) => ({ id: group.id, name: group.name, description: group.description })),
       encrypted,
       encryptionAvailable: Boolean(config.contentEncryptionKey)
     });
@@ -604,7 +661,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         user: request.currentUser,
         csrfToken: request.csrfToken,
         error: readSingle(query.error),
-        scripts: ["/wiki-ui.js?v=6"]
+        scripts: ["/wiki-ui.js?v=7"]
       })
     );
   });
@@ -630,11 +687,14 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     const encrypted = readSingle(body.encrypted) === "1" || readSingle(body.encrypted) === "on";
 
     const knownUsernames = new Set((await listUsers()).filter((user) => !user.disabled).map((user) => user.username.toLowerCase()));
+    const knownGroupIds = new Set((await listGroups()).map((group) => group.id));
 
     const allowedUsersInput = normalizeUsernames(readMany(body.allowedUsers));
     const allowedUsers = allowedUsersInput.filter((username) => knownUsernames.has(username));
+    const allowedGroupsInput = normalizeIds(readMany(body.allowedGroups));
+    const allowedGroups = allowedGroupsInput.filter((groupId) => knownGroupIds.has(groupId));
 
-    if (visibility === "restricted" && request.currentUser?.username) {
+    if (visibility === "restricted" && request.currentUser?.username && request.currentUser.role !== "admin") {
       const own = request.currentUser.username.toLowerCase();
       if (!allowedUsers.includes(own)) {
         allowedUsers.push(own);
@@ -651,6 +711,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         categoryId: selectedCategoryId,
         visibility,
         allowedUsers,
+        allowedGroups,
         encrypted
       });
       return reply.redirect(`/new?${query}`);
@@ -667,6 +728,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         categoryId: selectedCategoryId,
         visibility,
         allowedUsers,
+        allowedGroups,
         encrypted
       });
       return reply.redirect(`/new?${query}`);
@@ -678,6 +740,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
       categoryId: selectedCategoryId,
       visibility,
       allowedUsers,
+      allowedGroups,
       encrypted,
       tags,
       content,
@@ -694,6 +757,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         categoryId: selectedCategoryId,
         visibility,
         allowedUsers,
+        allowedGroups,
         encrypted
       });
       return reply.redirect(`/new?${query}`);
@@ -734,6 +798,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     }
 
     const categories = await listCategories();
+    const groups = await listGroups();
     const users = (await listUsers())
       .filter((user) => !user.disabled)
       .map((user) => ({ username: user.username, displayName: user.displayName }));
@@ -745,6 +810,10 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     const selectedCategoryId = readSingle(query.categoryId) || page.categoryId;
     const visibility = readSingle(query.visibility) === "restricted" ? "restricted" : page.visibility;
     const allowedUsers = normalizeUsernames(readMany(query.allowedUsers).length > 0 ? readMany(query.allowedUsers) : page.allowedUsers);
+    const knownGroupIds = new Set(groups.map((group) => group.id));
+    const allowedGroups = normalizeIds(readMany(query.allowedGroups).length > 0 ? readMany(query.allowedGroups) : page.allowedGroups).filter(
+      (groupId) => knownGroupIds.has(groupId)
+    );
     const encrypted = readSingle(query.encrypted) ? readSingle(query.encrypted) === "1" : page.encrypted;
 
     const body = renderEditorForm({
@@ -761,7 +830,9 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
       selectedCategoryId,
       visibility,
       allowedUsers,
+      allowedGroups,
       availableUsers: users,
+      availableGroups: groups.map((group) => ({ id: group.id, name: group.name, description: group.description })),
       encrypted,
       encryptionAvailable: Boolean(config.contentEncryptionKey)
     });
@@ -773,7 +844,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         user: request.currentUser,
         csrfToken: request.csrfToken,
         error: readSingle(query.error),
-        scripts: ["/wiki-ui.js?v=6"]
+        scripts: ["/wiki-ui.js?v=7"]
       })
     );
   });
@@ -911,11 +982,14 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     const encrypted = readSingle(body.encrypted) === "1" || readSingle(body.encrypted) === "on";
 
     const knownUsernames = new Set((await listUsers()).filter((user) => !user.disabled).map((user) => user.username.toLowerCase()));
+    const knownGroupIds = new Set((await listGroups()).map((group) => group.id));
 
     const allowedUsersInput = normalizeUsernames(readMany(body.allowedUsers));
     const allowedUsers = allowedUsersInput.filter((username) => knownUsernames.has(username));
+    const allowedGroupsInput = normalizeIds(readMany(body.allowedGroups));
+    const allowedGroups = allowedGroupsInput.filter((groupId) => knownGroupIds.has(groupId));
 
-    if (visibility === "restricted" && request.currentUser?.username) {
+    if (visibility === "restricted" && request.currentUser?.username && request.currentUser.role !== "admin") {
       const own = request.currentUser.username.toLowerCase();
       if (!allowedUsers.includes(own)) {
         allowedUsers.push(own);
@@ -928,6 +1002,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
       categoryId: selectedCategoryId,
       visibility,
       allowedUsers,
+      allowedGroups,
       encrypted,
       tags,
       content,
@@ -943,6 +1018,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         categoryId: selectedCategoryId,
         visibility,
         allowedUsers,
+        allowedGroups,
         encrypted
       });
 
@@ -966,6 +1042,272 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     return reply.redirect(`/wiki/${encodeURIComponent(params.slug)}`);
   });
 
+  app.get("/wiki/:slug/history", { preHandler: [requireAuth] }, async (request, reply) => {
+    const params = request.params as { slug: string };
+    const normalizedSlug = params.slug.trim().toLowerCase();
+    const page = await getPage(normalizedSlug);
+    const versions = await listPageHistory(normalizedSlug, 250);
+
+    if (!page && versions.length < 1) {
+      return reply
+        .code(404)
+        .type("text/html")
+        .send(
+          renderLayout({
+            title: "Historie nicht gefunden",
+            user: request.currentUser,
+            csrfToken: request.csrfToken,
+            body: `<section class="content-wrap"><h1>Keine Historie gefunden</h1><p>Für diesen Artikel sind keine Versionen vorhanden.</p></section>`
+          })
+        );
+    }
+
+    if (page && !canUserAccessPage(page, request.currentUser)) {
+      return reply
+        .code(403)
+        .type("text/html")
+        .send(
+          renderLayout({
+            title: "Kein Zugriff",
+            user: request.currentUser,
+            csrfToken: request.csrfToken,
+            body: `<section class="content-wrap"><h1>Kein Zugriff</h1><p>Du hast keine Berechtigung für diesen Artikel.</p></section>`
+          })
+        );
+    }
+
+    if (!page && request.currentUser?.role !== "admin") {
+      return reply
+        .code(403)
+        .type("text/html")
+        .send(
+          renderLayout({
+            title: "Kein Zugriff",
+            user: request.currentUser,
+            csrfToken: request.csrfToken,
+            body: `<section class="content-wrap"><h1>Kein Zugriff</h1><p>Historie gelöschter Seiten ist nur für Admins sichtbar.</p></section>`
+          })
+        );
+    }
+
+    const body = `
+      <section class="content-wrap stack large">
+        <div class="page-header">
+          <div>
+            <h1>Versionshistorie</h1>
+            <p>${escapeHtml(page?.title ?? normalizedSlug)} (${escapeHtml(normalizedSlug)})</p>
+          </div>
+          <div class="action-row">
+            ${
+              page
+                ? `<a class="button secondary" href="/wiki/${encodeURIComponent(normalizedSlug)}">Zur Seite</a>`
+                : '<a class="button secondary" href="/">Zur Übersicht</a>'
+            }
+          </div>
+        </div>
+        ${
+          versions.length < 1
+            ? '<p class="empty">Noch keine Versionen vorhanden.</p>'
+            : `
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Zeitpunkt</th>
+                      <th>Typ</th>
+                      <th>Aktion von</th>
+                      <th>Stand vorher</th>
+                      <th>Größe</th>
+                      <th>Aktion</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${versions
+                      .map(
+                        (version) => `
+                          <tr>
+                            <td>${escapeHtml(formatDate(version.createdAt))}</td>
+                            <td>${escapeHtml(formatHistoryReason(version.reason))}</td>
+                            <td>${escapeHtml(version.createdBy)}</td>
+                            <td>${
+                              version.sourceUpdatedAt
+                                ? `${escapeHtml(formatDate(version.sourceUpdatedAt))} / ${escapeHtml(version.sourceUpdatedBy ?? "-")}`
+                                : "-"
+                            }</td>
+                            <td>${Math.max(1, Math.round(version.sizeBytes / 1024))} KB</td>
+                            <td><a class="button tiny secondary" href="/wiki/${encodeURIComponent(normalizedSlug)}/history/${encodeURIComponent(
+                              version.id
+                            )}">Ansehen</a></td>
+                          </tr>
+                        `
+                      )
+                      .join("")}
+                  </tbody>
+                </table>
+              </div>
+            `
+        }
+      </section>
+    `;
+
+    return reply.type("text/html").send(
+      renderLayout({
+        title: "Versionshistorie",
+        body,
+        user: request.currentUser,
+        csrfToken: request.csrfToken,
+        error: readSingle(asObject(request.query).error),
+        notice: readSingle(asObject(request.query).notice)
+      })
+    );
+  });
+
+  app.get("/wiki/:slug/history/:versionId", { preHandler: [requireAuth] }, async (request, reply) => {
+    const params = request.params as { slug: string; versionId: string };
+    const normalizedSlug = params.slug.trim().toLowerCase();
+    const page = await getPage(normalizedSlug);
+
+    if (page && !canUserAccessPage(page, request.currentUser)) {
+      return reply
+        .code(403)
+        .type("text/html")
+        .send(
+          renderLayout({
+            title: "Kein Zugriff",
+            user: request.currentUser,
+            csrfToken: request.csrfToken,
+            body: `<section class="content-wrap"><h1>Kein Zugriff</h1><p>Du hast keine Berechtigung für diesen Artikel.</p></section>`
+          })
+        );
+    }
+
+    if (!page && request.currentUser?.role !== "admin") {
+      return reply
+        .code(403)
+        .type("text/html")
+        .send(
+          renderLayout({
+            title: "Kein Zugriff",
+            user: request.currentUser,
+            csrfToken: request.csrfToken,
+            body: `<section class="content-wrap"><h1>Kein Zugriff</h1><p>Historie gelöschter Seiten ist nur für Admins sichtbar.</p></section>`
+          })
+        );
+    }
+
+    const versions = await listPageHistory(normalizedSlug, 250);
+    const version = versions.find((entry) => entry.id === params.versionId);
+    const rawContent = await getPageVersionRawContent(normalizedSlug, params.versionId);
+    if (!version || rawContent === null) {
+      return reply
+        .code(404)
+        .type("text/html")
+        .send(
+          renderLayout({
+            title: "Version nicht gefunden",
+            user: request.currentUser,
+            csrfToken: request.csrfToken,
+            body: `<section class="content-wrap"><h1>Version nicht gefunden</h1><p>Diese Version existiert nicht.</p></section>`
+          })
+        );
+    }
+
+    const body = `
+      <section class="content-wrap stack large">
+        <div class="page-header">
+          <div>
+            <h1>Version ansehen</h1>
+            <p>${escapeHtml(page?.title ?? normalizedSlug)} (${escapeHtml(normalizedSlug)})</p>
+          </div>
+          <div class="action-row">
+            <a class="button secondary" href="/wiki/${encodeURIComponent(normalizedSlug)}/history">Zur Historie</a>
+            ${
+              page
+                ? `<a class="button secondary" href="/wiki/${encodeURIComponent(normalizedSlug)}">Zur Seite</a>`
+                : '<a class="button secondary" href="/">Zur Übersicht</a>'
+            }
+          </div>
+        </div>
+
+        <div class="history-meta-grid">
+          <div><strong>Zeitpunkt:</strong> ${escapeHtml(formatDate(version.createdAt))}</div>
+          <div><strong>Typ:</strong> ${escapeHtml(formatHistoryReason(version.reason))}</div>
+          <div><strong>Von:</strong> ${escapeHtml(version.createdBy)}</div>
+          <div><strong>Vorheriger Stand:</strong> ${
+            version.sourceUpdatedAt
+              ? `${escapeHtml(formatDate(version.sourceUpdatedAt))} / ${escapeHtml(version.sourceUpdatedBy ?? "-")}`
+              : "-"
+          }</div>
+        </div>
+
+        ${
+          request.currentUser?.role === "admin"
+            ? `
+              <form method="post" action="/wiki/${encodeURIComponent(normalizedSlug)}/history/${encodeURIComponent(
+                version.id
+              )}/restore" onsubmit="return confirm('Version wirklich wiederherstellen? Aktueller Stand wird zuvor gesichert.')" class="action-row">
+                <input type="hidden" name="_csrf" value="${escapeHtml(request.csrfToken ?? "")}" />
+                <button type="submit">Diese Version wiederherstellen</button>
+              </form>
+            `
+            : ""
+        }
+
+        <pre class="history-raw">${escapeHtml(rawContent)}</pre>
+      </section>
+    `;
+
+    return reply.type("text/html").send(
+      renderLayout({
+        title: "Version ansehen",
+        body,
+        user: request.currentUser,
+        csrfToken: request.csrfToken,
+        error: readSingle(asObject(request.query).error),
+        notice: readSingle(asObject(request.query).notice)
+      })
+    );
+  });
+
+  app.post("/wiki/:slug/history/:versionId/restore", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const params = request.params as { slug: string; versionId: string };
+    const body = asObject(request.body);
+
+    if (!verifySessionCsrfToken(request, readSingle(body._csrf))) {
+      return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
+    }
+
+    const restoreResult = await restorePageVersion({
+      slug: params.slug,
+      versionId: params.versionId,
+      restoredBy: request.currentUser?.username ?? "unknown"
+    });
+    if (!restoreResult.ok) {
+      return reply.redirect(
+        `/wiki/${encodeURIComponent(params.slug)}/history?error=${encodeURIComponent(restoreResult.error ?? "Restore fehlgeschlagen")}`
+      );
+    }
+
+    const updateIndexResult = await upsertSearchIndexBySlug(params.slug);
+    if (!updateIndexResult.updated && updateIndexResult.reason && updateIndexResult.reason !== "rebuild_running") {
+      request.log.warn(
+        { slug: params.slug, reason: updateIndexResult.reason },
+        "Konnte Suchindex nach Restore nicht inkrementell aktualisieren"
+      );
+    }
+
+    await writeAuditLog({
+      action: "wiki_page_restored",
+      actorId: request.currentUser?.id,
+      targetId: params.slug,
+      details: {
+        versionId: params.versionId
+      }
+    });
+
+    return reply.redirect(`/wiki/${encodeURIComponent(params.slug)}?notice=${encodeURIComponent("Version wiederhergestellt")}`);
+  });
+
   app.post("/wiki/:slug/delete", { preHandler: [requireAdmin] }, async (request, reply) => {
     const params = request.params as { slug: string };
     const body = asObject(request.body);
@@ -980,8 +1322,14 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     }
 
     const candidateUploads = extractUploadReferencesFromMarkdown(page.content);
-    const deleted = await deletePage(params.slug);
-    if (!deleted) {
+    const deleteResult = await deletePage(params.slug, {
+      deletedBy: request.currentUser?.username ?? "unknown"
+    });
+    if (!deleteResult.ok) {
+      return reply.redirect(`/?error=${encodeURIComponent(deleteResult.error ?? "Löschen fehlgeschlagen")}`);
+    }
+
+    if (!deleteResult.deleted) {
       return reply.redirect("/?error=Seite+nicht+gefunden");
     }
 

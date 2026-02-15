@@ -3,6 +3,15 @@ import { requireAdmin, verifySessionCsrfToken } from "../lib/auth.js";
 import { writeAuditLog } from "../lib/audit.js";
 import { createCategory, listCategories, renameCategory } from "../lib/categoryStore.js";
 import {
+  createGroup,
+  deleteGroup,
+  findGroupById,
+  listGroups,
+  removeUserFromAllGroups,
+  setGroupMembers,
+  updateGroup
+} from "../lib/groupStore.js";
+import {
   ensureSearchIndexConsistency,
   getSearchIndexBuildStatus,
   getSearchIndexInfo,
@@ -32,6 +41,32 @@ import { listPages } from "../lib/wikiStore.js";
 const asRecord = (value: unknown): Record<string, string> => {
   if (!value || typeof value !== "object") return {};
   return value as Record<string, string>;
+};
+
+const asObject = (value: unknown): Record<string, unknown> => {
+  if (!value || typeof value !== "object") return {};
+  return value as Record<string, unknown>;
+};
+
+const readSingle = (value: unknown): string => {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && value.length > 0) {
+    return String(value[0] ?? "");
+  }
+  return "";
+};
+
+const readMany = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value.map((entry) => String(entry).trim()).filter((entry) => entry.length > 0);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+  }
+  return [];
 };
 
 const renderUsersTable = (csrfToken: string, ownUserId: string, users: Awaited<ReturnType<typeof listUsers>>): string => {
@@ -243,6 +278,90 @@ const renderCategoriesTable = (
   `;
 };
 
+const renderGroupsTable = (
+  csrfToken: string,
+  groups: Awaited<ReturnType<typeof listGroups>>,
+  pageCountByGroup: Map<string, number>
+): string => {
+  if (groups.length < 1) {
+    return '<p class="empty">Keine Gruppen vorhanden.</p>';
+  }
+
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Beschreibung</th>
+            <th>Mitglieder</th>
+            <th>Artikel</th>
+            <th>Aktion</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${groups
+            .map(
+              (group) => `
+                <tr>
+                  <td>${escapeHtml(group.name)}</td>
+                  <td>${group.description ? escapeHtml(group.description) : "-"}</td>
+                  <td>${group.members.length}</td>
+                  <td>${pageCountByGroup.get(group.id) ?? 0}</td>
+                  <td>
+                    <div class="action-row">
+                      <a class="button tiny secondary" href="/admin/groups/${escapeHtml(group.id)}/edit">Bearbeiten</a>
+                      <form method="post" action="/admin/groups/${escapeHtml(group.id)}/delete" onsubmit="return confirm('Gruppe wirklich löschen?')">
+                        <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}" />
+                        <button type="submit" class="danger tiny">Löschen</button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              `
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+};
+
+const renderGroupMemberPicker = (
+  users: Awaited<ReturnType<typeof listUsers>>,
+  selectedUsernames: string[]
+): string => {
+  if (users.length < 1) {
+    return '<p class="empty">Keine Benutzer vorhanden.</p>';
+  }
+
+  const selectedSet = new Set(selectedUsernames.map((value) => value.toLowerCase()));
+  const safeUsers = users.filter((user) => !user.disabled);
+
+  return `
+    <fieldset class="stack access-user-picker">
+      <legend>Mitglieder</legend>
+      <div class="picker-toolbar">
+        <input type="search" class="tiny" placeholder="Benutzer filtern" data-picker-filter autocomplete="off" />
+        <span class="muted-note small" data-picker-count></span>
+      </div>
+      <div class="stack allowed-users-list" data-picker-list>
+        ${
+          safeUsers.length > 0
+            ? safeUsers
+                .map((user) => {
+                  const checked = selectedSet.has(user.username.toLowerCase()) ? "checked" : "";
+                  const searchData = `${user.displayName} ${user.username}`;
+                  return `<label class="checkline user-checkline" data-search="${escapeHtml(searchData.toLowerCase())}"><input type="checkbox" name="members" value="${escapeHtml(user.username)}" ${checked} /> <span>${escapeHtml(user.displayName)} (${escapeHtml(user.username)})</span></label>`;
+                })
+                .join("")
+            : '<p class="muted-note">Keine aktiven Benutzer verfügbar.</p>'
+        }
+      </div>
+    </fieldset>
+  `;
+};
+
 const renderIndexManagement = (
   csrfToken: string,
   info: Awaited<ReturnType<typeof getSearchIndexInfo>>,
@@ -337,6 +456,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
           <a class="button" href="/admin/users/new">Neuen Benutzer anlegen</a>
           <a class="button secondary" href="/admin/media">Bildverwaltung</a>
           <a class="button secondary" href="/admin/categories">Kategorien</a>
+          <a class="button secondary" href="/admin/groups">Gruppen</a>
           <a class="button secondary" href="/admin/index">Suchindex</a>
         </div>
       </section>
@@ -369,6 +489,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
         <div class="action-row">
           <a class="button secondary" href="/admin/users">Benutzerverwaltung</a>
           <a class="button secondary" href="/admin/categories">Kategorien</a>
+          <a class="button secondary" href="/admin/groups">Gruppen</a>
           <a class="button secondary" href="/admin/index">Suchindex</a>
           <form method="post" action="/admin/media/cleanup" onsubmit="return confirm('Alle ungenutzten Bilddateien wirklich löschen?')">
             <input type="hidden" name="_csrf" value="${escapeHtml(request.csrfToken ?? "")}" />
@@ -491,6 +612,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
         <div class="action-row">
           <a class="button secondary" href="/admin/users">Benutzerverwaltung</a>
           <a class="button secondary" href="/admin/media">Bildverwaltung</a>
+          <a class="button secondary" href="/admin/groups">Gruppen</a>
           <a class="button secondary" href="/admin/index">Suchindex</a>
         </div>
       </section>
@@ -558,6 +680,220 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
     return reply.redirect(`/admin/categories?notice=${encodeURIComponent("Kategorie umbenannt.")}`);
   });
 
+  app.get("/admin/groups", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const query = asRecord(request.query);
+    const groups = await listGroups();
+    const pages = await listPages({ forceFileScan: true });
+    const pageCountByGroup = new Map<string, number>();
+
+    for (const page of pages) {
+      for (const groupId of page.allowedGroups) {
+        pageCountByGroup.set(groupId, (pageCountByGroup.get(groupId) ?? 0) + 1);
+      }
+    }
+
+    const body = `
+      <section class="page-header under-title">
+        <div>
+          <h1>Gruppen</h1>
+          <p>Benutzergruppen für Artikel-Freigaben verwalten.</p>
+        </div>
+        <div class="action-row">
+          <a class="button secondary" href="/admin/users">Benutzerverwaltung</a>
+          <a class="button secondary" href="/admin/media">Bildverwaltung</a>
+          <a class="button secondary" href="/admin/categories">Kategorien</a>
+          <a class="button secondary" href="/admin/index">Suchindex</a>
+        </div>
+      </section>
+      <section class="content-wrap stack">
+        <form method="post" action="/admin/groups/new" class="stack">
+          <input type="hidden" name="_csrf" value="${escapeHtml(request.csrfToken ?? "")}" />
+          <label>Name
+            <input type="text" name="name" minlength="2" maxlength="80" required />
+          </label>
+          <label>Beschreibung (optional)
+            <input type="text" name="description" maxlength="300" />
+          </label>
+          <div class="action-row">
+            <button type="submit">Gruppe anlegen</button>
+          </div>
+        </form>
+        ${renderGroupsTable(request.csrfToken ?? "", groups, pageCountByGroup)}
+      </section>
+    `;
+
+    return reply.type("text/html").send(
+      renderLayout({
+        title: "Gruppen",
+        body,
+        user: request.currentUser,
+        csrfToken: request.csrfToken,
+        notice: query.notice,
+        error: query.error
+      })
+    );
+  });
+
+  app.post("/admin/groups/new", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const body = asRecord(request.body);
+    if (!verifySessionCsrfToken(request, body._csrf ?? "")) {
+      return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
+    }
+
+    const result = await createGroup({
+      name: body.name ?? "",
+      description: body.description ?? ""
+    });
+    if (!result.ok) {
+      return reply.redirect(`/admin/groups?error=${encodeURIComponent(result.error ?? "Gruppe konnte nicht erstellt werden.")}`);
+    }
+
+    await writeAuditLog({
+      action: "admin_group_created",
+      actorId: request.currentUser?.id,
+      targetId: result.group?.id
+    });
+
+    return reply.redirect(`/admin/groups?notice=${encodeURIComponent("Gruppe erstellt.")}`);
+  });
+
+  app.get("/admin/groups/:id/edit", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const params = request.params as { id: string };
+    const group = await findGroupById(params.id);
+    if (!group) {
+      return reply.redirect("/admin/groups?error=Gruppe+nicht+gefunden");
+    }
+
+    const query = asRecord(request.query);
+    const users = await listUsers();
+
+    const name = query.name ?? group.name;
+    const description = query.description ?? group.description;
+    const selectedMembersRaw = (query.members ?? "").trim();
+    const selectedMembers =
+      selectedMembersRaw.length > 0
+        ? selectedMembersRaw
+            .split(",")
+            .map((entry) => entry.trim().toLowerCase())
+            .filter((entry) => entry.length > 0)
+        : group.members;
+
+    const body = `
+      <section class="content-wrap stack large">
+        <h1>Gruppe bearbeiten</h1>
+        <form method="post" action="/admin/groups/${escapeHtml(group.id)}/edit" class="stack large">
+          <input type="hidden" name="_csrf" value="${escapeHtml(request.csrfToken ?? "")}" />
+          <label>Name
+            <input type="text" name="name" value="${escapeHtml(name)}" minlength="2" maxlength="80" required />
+          </label>
+          <label>Beschreibung (optional)
+            <input type="text" name="description" value="${escapeHtml(description)}" maxlength="300" />
+          </label>
+          ${renderGroupMemberPicker(users, selectedMembers)}
+          <button type="submit">Gruppe speichern</button>
+        </form>
+      </section>
+    `;
+
+    return reply.type("text/html").send(
+      renderLayout({
+        title: "Gruppe bearbeiten",
+        body,
+        user: request.currentUser,
+        csrfToken: request.csrfToken,
+        notice: query.notice,
+        error: query.error,
+        scripts: ["/picker-ui.js?v=1"]
+      })
+    );
+  });
+
+  app.post("/admin/groups/:id/edit", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const params = request.params as { id: string };
+    const body = asObject(request.body);
+    const csrfToken = readSingle(body._csrf);
+    if (!verifySessionCsrfToken(request, csrfToken)) {
+      return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
+    }
+
+    const group = await findGroupById(params.id);
+    if (!group) {
+      return reply.redirect("/admin/groups?error=Gruppe+nicht+gefunden");
+    }
+
+    const name = readSingle(body.name);
+    const description = readSingle(body.description);
+    const userNameSet = new Set((await listUsers()).filter((user) => !user.disabled).map((user) => user.username.toLowerCase()));
+    const requestedMembers = readMany(body.members).map((entry) => entry.trim().toLowerCase());
+    const members = [...new Set(requestedMembers.filter((username) => userNameSet.has(username)))];
+
+    const updateResult = await updateGroup(group.id, {
+      name,
+      description
+    });
+    if (!updateResult.ok) {
+      return reply.redirect(
+        `/admin/groups/${encodeURIComponent(group.id)}/edit?error=${encodeURIComponent(updateResult.error ?? "Gruppe konnte nicht gespeichert werden.")}&name=${encodeURIComponent(
+          name
+        )}&description=${encodeURIComponent(description)}&members=${encodeURIComponent(members.join(","))}`
+      );
+    }
+
+    const memberResult = await setGroupMembers(group.id, members);
+    if (!memberResult.ok) {
+      return reply.redirect(
+        `/admin/groups/${encodeURIComponent(group.id)}/edit?error=${encodeURIComponent(memberResult.error ?? "Mitglieder konnten nicht gespeichert werden.")}&name=${encodeURIComponent(
+          name
+        )}&description=${encodeURIComponent(description)}&members=${encodeURIComponent(members.join(","))}`
+      );
+    }
+
+    await writeAuditLog({
+      action: "admin_group_updated",
+      actorId: request.currentUser?.id,
+      targetId: group.id,
+      details: {
+        memberCount: members.length
+      }
+    });
+
+    return reply.redirect(`/admin/groups/${encodeURIComponent(group.id)}/edit?notice=${encodeURIComponent("Gruppe aktualisiert.")}`);
+  });
+
+  app.post("/admin/groups/:id/delete", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const params = request.params as { id: string };
+    const body = asRecord(request.body);
+    if (!verifySessionCsrfToken(request, body._csrf ?? "")) {
+      return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
+    }
+
+    const group = await findGroupById(params.id);
+    if (!group) {
+      return reply.redirect("/admin/groups?error=Gruppe+nicht+gefunden");
+    }
+
+    const pages = await listPages({ forceFileScan: true });
+    const usageCount = pages.filter((page) => page.allowedGroups.includes(group.id)).length;
+    if (usageCount > 0) {
+      return reply.redirect(
+        `/admin/groups?error=${encodeURIComponent(`Gruppe wird noch in ${usageCount} Artikel(n) verwendet.`)}`
+      );
+    }
+
+    const deleted = await deleteGroup(group.id);
+    if (!deleted) {
+      return reply.redirect("/admin/groups?error=L%C3%B6schen+fehlgeschlagen");
+    }
+
+    await writeAuditLog({
+      action: "admin_group_deleted",
+      actorId: request.currentUser?.id,
+      targetId: group.id
+    });
+
+    return reply.redirect(`/admin/groups?notice=${encodeURIComponent("Gruppe gelöscht.")}`);
+  });
+
   app.get("/admin/index", { preHandler: [requireAdmin] }, async (request, reply) => {
     const query = asRecord(request.query);
     const info = await getSearchIndexInfo();
@@ -574,6 +910,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
           <a class="button secondary" href="/admin/users">Benutzerverwaltung</a>
           <a class="button secondary" href="/admin/media">Bildverwaltung</a>
           <a class="button secondary" href="/admin/categories">Kategorien</a>
+          <a class="button secondary" href="/admin/groups">Gruppen</a>
         </div>
       </section>
       ${renderIndexManagement(request.csrfToken ?? "", info, status, runtimeSettings.indexBackend)}
@@ -929,11 +1266,15 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
     }
 
     await deleteUserSessions(params.id);
+    const removedFromGroups = await removeUserFromAllGroups(target.username);
 
     await writeAuditLog({
       action: "admin_user_deleted",
       actorId: request.currentUser?.id,
-      targetId: params.id
+      targetId: params.id,
+      details: {
+        removedFromGroups
+      }
     });
 
     return reply.redirect("/admin/users?notice=Benutzer+gel%C3%B6scht");

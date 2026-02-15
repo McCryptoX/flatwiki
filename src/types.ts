@@ -12,7 +12,18 @@ export interface UserRecord {
   disabled: boolean;
 }
 
-export type PublicUser = Omit<UserRecord, "passwordHash">;
+export interface PublicUser extends Omit<UserRecord, "passwordHash"> {
+  groupIds?: string[] | undefined;
+}
+
+export interface UserGroup {
+  id: string;
+  name: string;
+  description: string;
+  members: string[];
+  createdAt: string;
+  updatedAt: string;
+}
 
 export interface WikiCategory {
   id: string;
@@ -39,6 +50,7 @@ export interface WikiPage {
   categoryName: string;
   visibility: WikiVisibility;
   allowedUsers: string[];
+  allowedGroups: string[];
   encrypted: boolean;
   encryptionState: "none" | "ok" | "locked" | "error";
   tags: string[];
@@ -58,6 +70,7 @@ export interface WikiPageSummary {
   categoryName: string;
   visibility: WikiVisibility;
   allowedUsers: string[];
+  allowedGroups: string[];
   encrypted: boolean;
   tags: string[];
   excerpt: string;

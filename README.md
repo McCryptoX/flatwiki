@@ -23,8 +23,10 @@ FlatWiki ist ein modernes, durchsuchbares Flat-File-Wiki mit Login, Rollen, Admi
   - eigene Daten exportieren (inkl. eigener Artikelübersicht + Markdown-Speicherdump)
   - Übersicht über selbst erstellte Artikel im Konto-Bereich
 - Kategorien (eine Kategorie pro Artikel)
-- Zugriff pro Artikel (`alle` oder `nur ausgewählte Benutzer`)
+- Zugriff pro Artikel (`alle` oder `nur ausgewählte Benutzer/Gruppen`)
+- Gruppen/Rechte-Modell (Admin-Gruppenverwaltung unter `/admin/groups`)
 - Optionale AES-256-Verschlüsselung pro Artikel
+- Versionshistorie pro Artikel mit Restore (Admin)
 - Volltextsuche
 - Live-Vorschläge im Suchfeld während der Eingabe
 - Pagination für Übersicht, Inhaltsverzeichnis und Suche
@@ -43,6 +45,7 @@ FlatWiki ist ein modernes, durchsuchbares Flat-File-Wiki mit Login, Rollen, Admi
   - Live-Fortschritt mit Progress-Balken
 - Beim Löschen eines Artikels: automatische Entfernung nicht mehr referenzierter Upload-Bilder
 - Admin-Kategorienverwaltung (`/admin/categories`)
+- Admin-Gruppenverwaltung (`/admin/groups`)
 - Visueller Setup-Assistent beim ersten Start (`/setup`)
 - Sicherheitsgrundlagen: `scrypt`, CSRF, Rate-Limit, Security-Header, Audit-Log
 

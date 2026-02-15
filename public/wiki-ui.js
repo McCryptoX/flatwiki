@@ -98,10 +98,24 @@
     const uploadForm = editorShell.querySelector(".image-upload-form");
     const output = editorShell.querySelector(".upload-markdown-output");
     const visibilitySelect = editorShell.querySelector('select[name="visibility"]');
-    const allowedUsersBox = editorShell.querySelector("[data-allowed-users-box]");
-    const allowedUsersFilter = editorShell.querySelector("[data-allowed-users-filter]");
-    const allowedUsersCount = editorShell.querySelector("[data-allowed-users-count]");
-    const allowedUsersList = editorShell.querySelector("[data-allowed-users-list]");
+    const restrictedSections = Array.from(editorShell.querySelectorAll("[data-restricted-only]"));
+    const accessPickers = restrictedSections
+      .map((section) => {
+        if (!(section instanceof HTMLElement)) return null;
+        const list = section.querySelector("[data-picker-list]");
+        if (!(list instanceof HTMLElement)) return null;
+
+        const filter = section.querySelector("[data-picker-filter]");
+        const count = section.querySelector("[data-picker-count]");
+
+        return {
+          section,
+          list,
+          filter: filter instanceof HTMLInputElement ? filter : null,
+          count: count instanceof HTMLElement ? count : null
+        };
+      })
+      .filter((entry) => entry !== null);
     const categorySelect = editorShell.querySelector('select[name="categoryId"]');
     const toolbarButtons = editorShell.querySelectorAll("[data-md-action]");
     const previewPanel = editorShell.querySelector(".editor-preview");
@@ -194,34 +208,32 @@
       }, 180);
     };
 
-    const syncAllowedUsersVisibility = () => {
-      if (!(visibilitySelect instanceof HTMLSelectElement) || !(allowedUsersBox instanceof HTMLElement)) return;
+    const syncRestrictedVisibility = () => {
+      if (!(visibilitySelect instanceof HTMLSelectElement)) return;
       const restricted = visibilitySelect.value === "restricted";
-      allowedUsersBox.hidden = !restricted;
+      for (const picker of accessPickers) {
+        picker.section.hidden = !restricted;
+      }
     };
 
-    const applyAllowedUsersFilter = () => {
-      if (!(allowedUsersList instanceof HTMLElement)) return;
-
-      const labels = allowedUsersList.querySelectorAll("label[data-user-search]");
-      const term =
-        allowedUsersFilter instanceof HTMLInputElement ? allowedUsersFilter.value.trim().toLowerCase() : "";
-
+    const applyPickerFilter = (picker) => {
+      const labels = picker.list.querySelectorAll("label[data-search]");
+      const term = picker.filter instanceof HTMLInputElement ? picker.filter.value.trim().toLowerCase() : "";
       for (const label of labels) {
         if (!(label instanceof HTMLElement)) continue;
-        const haystack = (label.dataset.userSearch || "").toLowerCase();
+        const haystack = (label.dataset.search || "").toLowerCase();
         const visible = term.length === 0 || haystack.includes(term);
         label.hidden = !visible;
       }
     };
 
-    const syncAllowedUsersCount = () => {
-      if (!(allowedUsersList instanceof HTMLElement) || !(allowedUsersCount instanceof HTMLElement)) return;
-      const checkboxes = allowedUsersList.querySelectorAll('input[type="checkbox"][name="allowedUsers"]');
+    const syncPickerCount = (picker) => {
+      if (!(picker.count instanceof HTMLElement)) return;
+      const checkboxes = picker.list.querySelectorAll('input[type="checkbox"]');
       const allCount = checkboxes.length;
-      const selectedCount = allowedUsersList.querySelectorAll('input[type="checkbox"][name="allowedUsers"]:checked').length;
-      const visibleCount = allowedUsersList.querySelectorAll('label[data-user-search]:not([hidden])').length;
-      allowedUsersCount.textContent = `${selectedCount}/${allCount} ausgewählt, ${visibleCount} sichtbar`;
+      const selectedCount = picker.list.querySelectorAll('input[type="checkbox"]:checked').length;
+      const visibleCount = picker.list.querySelectorAll("label[data-search]:not([hidden])").length;
+      picker.count.textContent = `${selectedCount}/${allCount} ausgewählt, ${visibleCount} sichtbar`;
     };
 
     for (const button of toolbarButtons) {
@@ -242,29 +254,33 @@
 
     contentTextarea.addEventListener("input", schedulePreview);
     setView("write");
-    syncAllowedUsersVisibility();
-    applyAllowedUsersFilter();
-    syncAllowedUsersCount();
+    syncRestrictedVisibility();
+    for (const picker of accessPickers) {
+      applyPickerFilter(picker);
+      syncPickerCount(picker);
+    }
 
     if (visibilitySelect instanceof HTMLSelectElement) {
       visibilitySelect.addEventListener("change", () => {
-        syncAllowedUsersVisibility();
-        syncAllowedUsersCount();
+        syncRestrictedVisibility();
+        for (const picker of accessPickers) {
+          syncPickerCount(picker);
+        }
       });
     }
 
-    if (allowedUsersFilter instanceof HTMLInputElement) {
-      allowedUsersFilter.addEventListener("input", () => {
-        applyAllowedUsersFilter();
-        syncAllowedUsersCount();
-      });
-    }
+    for (const picker of accessPickers) {
+      if (picker.filter instanceof HTMLInputElement) {
+        picker.filter.addEventListener("input", () => {
+          applyPickerFilter(picker);
+          syncPickerCount(picker);
+        });
+      }
 
-    if (allowedUsersList instanceof HTMLElement) {
-      allowedUsersList.addEventListener("change", (event) => {
+      picker.list.addEventListener("change", (event) => {
         const target = event.target;
-        if (target instanceof HTMLInputElement && target.name === "allowedUsers") {
-          syncAllowedUsersCount();
+        if (target instanceof HTMLInputElement && target.type === "checkbox") {
+          syncPickerCount(picker);
         }
       });
     }

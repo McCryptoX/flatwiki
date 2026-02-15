@@ -49,7 +49,7 @@ export interface SearchIndexInfo {
   fileSizeBytes: number;
 }
 
-const INDEX_VERSION = 2;
+const INDEX_VERSION = 3;
 
 const isSqliteBackend = (): boolean => getIndexBackend() === "sqlite";
 
@@ -93,6 +93,9 @@ const normalizeIndexEntry = (entry: SearchIndexPageEntry): SearchIndexPageEntry 
   allowedUsers: Array.isArray(entry.allowedUsers)
     ? entry.allowedUsers.map((value) => String(value).trim().toLowerCase()).filter((value) => value.length > 0)
     : [],
+  allowedGroups: Array.isArray(entry.allowedGroups)
+    ? entry.allowedGroups.map((value) => String(value).trim()).filter((value) => value.length > 0)
+    : [],
   encrypted: entry.encrypted === true,
   tags: Array.isArray(entry.tags) ? entry.tags.map((value) => String(value).trim().toLowerCase()).filter(Boolean) : [],
   excerpt: String(entry.excerpt ?? "").trim(),
@@ -115,10 +118,21 @@ const readSearchIndexFile = async (): Promise<SearchIndexFile> => {
 const buildEntrySignature = (
   entry: Pick<
     WikiPageSummary,
-    "slug" | "title" | "categoryId" | "categoryName" | "visibility" | "allowedUsers" | "encrypted" | "tags" | "excerpt" | "updatedAt"
+    | "slug"
+    | "title"
+    | "categoryId"
+    | "categoryName"
+    | "visibility"
+    | "allowedUsers"
+    | "allowedGroups"
+    | "encrypted"
+    | "tags"
+    | "excerpt"
+    | "updatedAt"
   >
 ): string => {
   const allowedUsers = [...entry.allowedUsers].map((value) => value.trim().toLowerCase()).sort().join(",");
+  const allowedGroups = [...entry.allowedGroups].map((value) => value.trim()).sort().join(",");
   const tags = [...entry.tags].map((value) => value.trim().toLowerCase()).sort().join(",");
   return [
     entry.slug.trim().toLowerCase(),
@@ -127,6 +141,7 @@ const buildEntrySignature = (
     entry.categoryName.trim(),
     entry.visibility,
     allowedUsers,
+    allowedGroups,
     entry.encrypted ? "1" : "0",
     tags,
     entry.excerpt.trim(),
@@ -151,6 +166,7 @@ const buildIndexEntryFromPage = (page: WikiPage): SearchIndexPageEntry => {
     categoryName: page.categoryName,
     visibility: page.visibility,
     allowedUsers: page.allowedUsers,
+    allowedGroups: page.allowedGroups,
     encrypted: page.encrypted,
     tags: page.tags,
     excerpt,
@@ -425,12 +441,22 @@ const removeSearchIndexBySlugFlat = async (slug: string): Promise<{ updated: boo
   };
 };
 
-const getConsistencyReasonFromEntries = (
+  const getConsistencyReasonFromEntries = (
   pages: WikiPageSummary[],
   entries: Array<
     Pick<
       WikiPageSummary,
-      "slug" | "title" | "categoryId" | "categoryName" | "visibility" | "allowedUsers" | "encrypted" | "tags" | "excerpt" | "updatedAt"
+      | "slug"
+      | "title"
+      | "categoryId"
+      | "categoryName"
+      | "visibility"
+      | "allowedUsers"
+      | "allowedGroups"
+      | "encrypted"
+      | "tags"
+      | "excerpt"
+      | "updatedAt"
     >
   >
 ): string => {

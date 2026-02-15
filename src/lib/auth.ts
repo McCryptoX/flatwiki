@@ -1,6 +1,7 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { config } from "../config.js";
+import { listGroupIdsForUser } from "./groupStore.js";
 import { deleteSession, getSessionById } from "./sessionStore.js";
 import { findUserById, hasAnyUser } from "./userStore.js";
 
@@ -78,7 +79,11 @@ export const attachCurrentUser = async (request: FastifyRequest, reply: FastifyR
     return;
   }
 
-  request.currentUser = user;
+  const groupIds = user.role === "admin" ? [] : await listGroupIdsForUser(user.username);
+  request.currentUser = {
+    ...user,
+    groupIds
+  };
   request.currentSessionId = sessionId;
   request.csrfToken = session.csrfToken;
 };

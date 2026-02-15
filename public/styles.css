@@ -361,11 +361,15 @@ a {
 
 .card-excerpt {
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 7;
+  overflow: hidden;
 }
 
 .card-meta {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.4rem;
   color: var(--muted);
   font-size: 0.85rem;
@@ -495,6 +499,7 @@ label {
 .checkline {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 0.6rem;
   font-weight: 500;
 }
@@ -509,6 +514,7 @@ label.checkline {
 
 .checkline input[type="checkbox"] {
   margin: 0;
+  flex: 0 0 auto;
 }
 
 input,
@@ -696,7 +702,7 @@ a[aria-disabled="true"] {
   font-weight: 600;
 }
 
-[data-allowed-users-box][hidden] {
+[data-restricted-only][hidden] {
   display: none !important;
 }
 
@@ -724,12 +730,32 @@ a[aria-disabled="true"] {
 }
 
 .user-checkline {
-  align-items: center;
+  display: flex !important;
+  align-items: flex-start;
+  justify-content: flex-start;
   gap: 0.55rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfdfc;
+}
+
+.user-checkline span {
+  display: grid;
+  gap: 0.15rem;
 }
 
 .user-checkline input[type="checkbox"] {
   flex: 0 0 auto;
+  margin-top: 0.2rem;
+}
+
+.standalone-checkline {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 2.2rem;
 }
 
 .table-wrap {
@@ -887,6 +913,22 @@ th {
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 0.8rem;
   margin-bottom: 1rem;
+}
+
+.history-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.5rem 0.8rem;
+}
+
+.history-raw {
+  margin: 0;
+  padding: 0.9rem;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #f7fbfa;
+  overflow: auto;
+  max-height: 60dvh;
 }
 
 hr {

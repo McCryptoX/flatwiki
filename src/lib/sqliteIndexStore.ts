@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS pages (
   categoryName TEXT NOT NULL,
   visibility TEXT NOT NULL,
   allowedUsers TEXT NOT NULL,
+  allowedGroups TEXT NOT NULL,
   encrypted INTEGER NOT NULL,
   tags TEXT NOT NULL,
   excerpt TEXT NOT NULL,
@@ -133,6 +134,24 @@ const quarantineCorruptIndexFile = async (): Promise<void> => {
 
 const ensureSchema = (db: SqlJsDatabase): void => {
   db.run(SQLITE_SCHEMA);
+
+  const stmt = db.prepare("PRAGMA table_info(pages)");
+  let hasAllowedGroups = false;
+  try {
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      if (String(row.name ?? "").trim() === "allowedGroups") {
+        hasAllowedGroups = true;
+        break;
+      }
+    }
+  } finally {
+    stmt.free();
+  }
+
+  if (!hasAllowedGroups) {
+    db.run("ALTER TABLE pages ADD COLUMN allowedGroups TEXT NOT NULL DEFAULT '[]'");
+  }
 };
 
 const openSqliteDb = async (): Promise<SqlJsDatabase> => {
@@ -174,12 +193,17 @@ const toInt = (value: unknown): number => {
   return Number.isFinite(parsed) ? Math.trunc(parsed) : 0;
 };
 
-const parseArray = (raw: unknown): string[] => {
+const parseArray = (raw: unknown, lowercase = true): string[] => {
   if (typeof raw !== "string") return [];
   try {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.map((entry) => String(entry).trim().toLowerCase()).filter((entry) => entry.length > 0);
+    return parsed
+      .map((entry) => {
+        const value = String(entry).trim();
+        return lowercase ? value.toLowerCase() : value;
+      })
+      .filter((entry) => entry.length > 0);
   } catch {
     return [];
   }
@@ -192,6 +216,7 @@ const normalizeEntry = (entry: SqliteIndexEntry): SqliteIndexEntry => ({
   categoryName: String(entry.categoryName ?? "").trim() || "Allgemein",
   visibility: entry.visibility === "restricted" ? "restricted" : "all",
   allowedUsers: [...entry.allowedUsers].map((value) => value.trim().toLowerCase()).filter((value) => value.length > 0),
+  allowedGroups: [...entry.allowedGroups].map((value) => value.trim()).filter((value) => value.length > 0),
   encrypted: entry.encrypted === true,
   tags: [...entry.tags].map((value) => value.trim().toLowerCase()).filter((value) => value.length > 0),
   excerpt: String(entry.excerpt ?? "").trim(),
@@ -218,6 +243,7 @@ const mapRowToEntry = (row: Record<string, unknown>): SqliteIndexEntry => {
     categoryName: String(row.categoryName ?? "").trim() || "Allgemein",
     visibility: row.visibility === "restricted" ? "restricted" : "all",
     allowedUsers: parseArray(row.allowedUsers),
+    allowedGroups: parseArray(row.allowedGroups, false),
     encrypted: toInt(row.encrypted) === 1,
     tags,
     excerpt,
@@ -264,14 +290,15 @@ const insertEntry = (db: SqlJsDatabase, entry: SqliteIndexEntry): void => {
   const normalized = normalizeEntry(entry);
   db.run(
     `INSERT INTO pages (
-      slug, title, categoryId, categoryName, visibility, allowedUsers, encrypted, tags, excerpt, updatedAt, updatedAtMs, searchableText
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      slug, title, categoryId, categoryName, visibility, allowedUsers, allowedGroups, encrypted, tags, excerpt, updatedAt, updatedAtMs, searchableText
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(slug) DO UPDATE SET
       title = excluded.title,
       categoryId = excluded.categoryId,
       categoryName = excluded.categoryName,
       visibility = excluded.visibility,
       allowedUsers = excluded.allowedUsers,
+      allowedGroups = excluded.allowedGroups,
       encrypted = excluded.encrypted,
       tags = excluded.tags,
       excerpt = excluded.excerpt,
@@ -285,6 +312,7 @@ const insertEntry = (db: SqlJsDatabase, entry: SqliteIndexEntry): void => {
       normalized.categoryName,
       normalized.visibility,
       JSON.stringify(normalized.allowedUsers),
+      JSON.stringify(normalized.allowedGroups),
       normalized.encrypted ? 1 : 0,
       JSON.stringify(normalized.tags),
       normalized.excerpt,

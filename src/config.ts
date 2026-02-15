@@ -164,7 +164,9 @@ export const config = {
   runtimeSettingsFile: path.join(rootDir, "data", "runtime-settings.json"),
   wikiDir: path.join(rootDir, "data", "wiki"),
   uploadDir: path.join(rootDir, "data", "uploads"),
+  versionsDir: path.join(rootDir, "data", "versions"),
   categoriesFile: path.join(rootDir, "data", "categories.json"),
+  groupsFile: path.join(rootDir, "data", "groups.json"),
   usersFile: path.join(rootDir, "data", "users.json"),
   sessionsFile: path.join(rootDir, "data", "sessions.json"),
   auditFile: path.join(rootDir, "data", "audit.log")
