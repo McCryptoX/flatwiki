@@ -56,7 +56,7 @@ FlatWiki ist ein modernes, durchsuchbares Flat-File-Wiki mit Login, Rollen, Admi
   - Manuelle Bereinigung (Retention + Kompression)
 - Beim Löschen eines Artikels: automatische Entfernung nicht mehr referenzierter Upload-Bilder
 - Verschlüsselte Backups mit separatem Backup-Schlüssel (`scripts/backup-encrypted.sh`, `scripts/backup-decrypt.sh`)
-- Admin-Backupverwaltung (`/admin/backups`) mit 1-Klick-Start, Progressbar, Download und Löschen
+- Admin-Backupverwaltung (`/admin/backups`) mit 1-Klick-Start, Progressbar, Download, Löschen und Restore-Wizard (Upload + Prüfung + explizite Bestätigung)
 - Admin-Kategorienverwaltung (`/admin/categories`)
 - Admin-Gruppenverwaltung (`/admin/groups`)
 - Visueller Setup-Assistent beim ersten Start (`/setup`)
@@ -290,7 +290,19 @@ git status --short
 
 ## Backup und Restore (verschlüsselt)
 
-Backup mit separatem Schlüssel:
+Backup im Admin-Menü:
+
+- Unter `/admin/backups` auf **„Backup jetzt erstellen“** klicken.
+- Fortschritt und Ergebnisdatei werden live angezeigt.
+- Backups liegen in `data/backups/`.
+
+Restore im Admin-Menü (Wizard):
+
+1. Unter `/admin/backups` eine `.tar.gz.enc` hochladen und mit Passphrase prüfen.
+2. Nach erfolgreicher Prüfung die Wiederherstellung explizit bestätigen.
+3. Restore läuft asynchron mit Fortschrittsanzeige.
+
+CLI-Backup mit separatem Schlüssel:
 
 ```bash
 cd /pfad/zu/FlatWiki
@@ -298,7 +310,7 @@ export BACKUP_ENCRYPTION_KEY='separater-backup-key'
 ./scripts/backup-encrypted.sh
 ```
 
-Restore:
+CLI-Restore (Entschlüsseln in Zielordner):
 
 ```bash
 cd /pfad/zu/FlatWiki
@@ -310,6 +322,7 @@ Hinweise:
 
 - Backup-Schlüssel getrennt vom Content-Key halten.
 - Bei vorhandener `.sha256` wird die Prüfsumme beim Restore verifiziert.
+- Während eines laufenden Backup/Restore sind konkurrierende Aktionen gesperrt.
 
 ## Artikel-Editor
 

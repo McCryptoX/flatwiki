@@ -710,6 +710,18 @@ a[aria-disabled="true"] {
   font-weight: 500;
 }
 
+.admin-restore-ready {
+  margin-top: 0.85rem;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfdfc;
+}
+
+.admin-restore-ready h3 {
+  margin: 0 0 0.3rem;
+}
+
 .action-row input[type="text"],
 .action-row input[type="search"],
 .action-row select {

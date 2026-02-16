@@ -11,6 +11,15 @@
   const target = root.querySelector("[data-backup-target]");
   const error = root.querySelector("[data-backup-error]");
   const filesBody = root.querySelector("[data-backup-files]");
+
+  const restoreProgress = root.querySelector("[data-restore-progress]");
+  const restoreState = root.querySelector("[data-restore-state]");
+  const restorePercent = root.querySelector("[data-restore-percent]");
+  const restoreMessage = root.querySelector("[data-restore-message]");
+  const restoreTime = root.querySelector("[data-restore-time]");
+  const restoreSource = root.querySelector("[data-restore-source]");
+  const restoreError = root.querySelector("[data-restore-error]");
+
   const csrf = root.getAttribute("data-csrf") || "";
 
   if (!startButton || !progress || !state || !percent || !message || !time || !target || !error || !filesBody) return;
@@ -18,6 +27,7 @@
   let pollHandle = 0;
   let requestInFlight = false;
   let backupRunning = false;
+  let restoreRunning = false;
 
   const escapeHtml = (value) =>
     String(value)
@@ -53,7 +63,7 @@
     return "Bereit";
   };
 
-  const renderStatus = (status, hasBackupKey) => {
+  const renderBackupStatus = (status, hasBackupKey) => {
     const current = status || {};
     const currentPercent = Number.isFinite(current.percent) ? Math.max(0, Math.min(100, current.percent)) : 0;
 
@@ -64,7 +74,7 @@
     time.textContent = `Start: ${formatDate(current.startedAt)} | Ende: ${formatDate(current.finishedAt)}`;
     target.innerHTML = `Datei: ${current.archiveFileName ? `<code>${escapeHtml(current.archiveFileName)}</code>` : "-"}`;
 
-    const disableStart = Boolean(current.running) || !hasBackupKey;
+    const disableStart = Boolean(current.running) || restoreRunning || !hasBackupKey;
     startButton.disabled = disableStart;
     backupRunning = Boolean(current.running);
 
@@ -74,6 +84,32 @@
     } else {
       error.textContent = "";
       error.hidden = true;
+    }
+  };
+
+  const renderRestoreStatus = (status) => {
+    if (!restoreProgress || !restoreState || !restorePercent || !restoreMessage || !restoreTime || !restoreSource || !restoreError) {
+      return;
+    }
+
+    const current = status || {};
+    const currentPercent = Number.isFinite(current.percent) ? Math.max(0, Math.min(100, current.percent)) : 0;
+
+    restoreState.textContent = phaseLabel(current);
+    restorePercent.textContent = `${currentPercent}%`;
+    restoreProgress.value = currentPercent;
+    restoreMessage.textContent = String(current.message || "Bereit");
+    restoreTime.textContent = `Start: ${formatDate(current.startedAt)} | Ende: ${formatDate(current.finishedAt)}`;
+    restoreSource.innerHTML = `Quelle: ${current.sourceFileName ? `<code>${escapeHtml(current.sourceFileName)}</code>` : "-"}`;
+
+    restoreRunning = Boolean(current.running);
+
+    if (current.error) {
+      restoreError.textContent = String(current.error);
+      restoreError.hidden = false;
+    } else {
+      restoreError.textContent = "";
+      restoreError.hidden = true;
     }
   };
 
@@ -127,9 +163,10 @@
       const payload = await response.json();
       if (!payload || !payload.status) return;
 
+      renderRestoreStatus(payload.restoreStatus);
       const hasBackupKey = Boolean(payload.hasBackupKey);
-      renderStatus(payload.status, hasBackupKey);
-      renderFiles(payload.files, Boolean(payload.status?.running));
+      renderBackupStatus(payload.status, hasBackupKey);
+      renderFiles(payload.files, Boolean(payload.status?.running) || Boolean(payload.restoreStatus?.running));
     } catch {
       // noop
     } finally {
@@ -141,7 +178,7 @@
     window.clearTimeout(pollHandle);
     pollHandle = window.setTimeout(async () => {
       await pollStatus();
-      schedulePoll(backupRunning ? 1400 : 5000);
+      schedulePoll(backupRunning || restoreRunning ? 1400 : 5000);
     }, delayMs);
   };
 
@@ -158,11 +195,14 @@
       });
 
       const payload = await response.json().catch(() => null);
+      if (payload && payload.restoreStatus) {
+        renderRestoreStatus(payload.restoreStatus);
+      }
       if (payload && payload.status) {
-        renderStatus(payload.status, Boolean(payload.hasBackupKey));
+        renderBackupStatus(payload.status, Boolean(payload.hasBackupKey));
       }
       if (payload && Array.isArray(payload.files)) {
-        renderFiles(payload.files, Boolean(payload.status?.running));
+        renderFiles(payload.files, Boolean(payload.status?.running) || Boolean(payload.restoreStatus?.running));
       }
 
       if (!response.ok || (payload && payload.ok === false && payload.reason)) {

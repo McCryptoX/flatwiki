@@ -1,9 +1,11 @@
 import type { FastifyInstance } from "fastify";
-import { createReadStream } from "node:fs";
+import { createReadStream, createWriteStream } from "node:fs";
 import path from "node:path";
+import { pipeline } from "node:stream/promises";
 import { requireAdmin, verifySessionCsrfToken } from "../lib/auth.js";
 import { writeAuditLog } from "../lib/audit.js";
 import { config } from "../config.js";
+import { removeFile } from "../lib/fileStore.js";
 import { createCategory, listCategories, renameCategory } from "../lib/categoryStore.js";
 import {
   createGroup,
@@ -27,7 +29,19 @@ import {
   normalizeUploadFileName
 } from "../lib/mediaStore.js";
 import { cleanupAllPageVersions, getVersionStoreReport } from "../lib/pageVersionStore.js";
-import { deleteBackupFile, getBackupStatus, listBackupFiles, resolveBackupFilePath, startBackupJob } from "../lib/backupStore.js";
+import {
+  cancelPreparedRestore,
+  createRestoreUploadTarget,
+  deleteBackupFile,
+  getBackupStatus,
+  getPreparedRestoreInfo,
+  getRestoreStatus,
+  listBackupFiles,
+  prepareRestoreUpload,
+  resolveBackupFilePath,
+  startBackupJob,
+  startRestoreJob
+} from "../lib/backupStore.js";
 import { escapeHtml, formatDate, renderLayout } from "../lib/render.js";
 import {
   createUser,
@@ -529,20 +543,33 @@ const renderVersionManagement = (
 
 const renderBackupManagement = (
   csrfToken: string,
-  status: ReturnType<typeof getBackupStatus>,
+  backupStatus: ReturnType<typeof getBackupStatus>,
+  restoreStatus: ReturnType<typeof getRestoreStatus>,
+  preparedRestore: Awaited<ReturnType<typeof getPreparedRestoreInfo>>,
   files: Awaited<ReturnType<typeof listBackupFiles>>,
   hasBackupKey: boolean
 ): string => {
-  const percent = Number.isFinite(status.percent) ? Math.min(Math.max(status.percent, 0), 100) : 0;
-  const statusError = status.error ? escapeHtml(status.error) : "";
-  const stateLabel =
-    status.phase === "error"
+  const backupPercent = Number.isFinite(backupStatus.percent) ? Math.min(Math.max(backupStatus.percent, 0), 100) : 0;
+  const backupStatusError = backupStatus.error ? escapeHtml(backupStatus.error) : "";
+  const backupStateLabel =
+    backupStatus.phase === "error"
       ? "Fehler"
-      : status.running
+      : backupStatus.running
         ? "Läuft"
-        : status.phase === "done"
+        : backupStatus.phase === "done"
           ? "Fertig"
           : "Bereit";
+  const restorePercent = Number.isFinite(restoreStatus.percent) ? Math.min(Math.max(restoreStatus.percent, 0), 100) : 0;
+  const restoreStatusError = restoreStatus.error ? escapeHtml(restoreStatus.error) : "";
+  const restoreStateLabel =
+    restoreStatus.phase === "error"
+      ? "Fehler"
+      : restoreStatus.running
+        ? "Läuft"
+        : restoreStatus.phase === "done"
+          ? "Fertig"
+          : "Bereit";
+  const operationRunning = backupStatus.running || restoreStatus.running;
 
   const latestFiles = files
     .slice(0, 50)
@@ -559,7 +586,7 @@ const renderBackupManagement = (
               <form method="post" action="/admin/backups/delete" onsubmit="return confirm('Backup-Datei wirklich löschen?')">
                 <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}" />
                 <input type="hidden" name="fileName" value="${escapeHtml(file.fileName)}" />
-                <button type="submit" class="danger tiny" ${status.running ? "disabled" : ""}>Löschen</button>
+                <button type="submit" class="danger tiny" ${operationRunning ? "disabled" : ""}>Löschen</button>
               </form>
             </div>
           </td>
@@ -567,6 +594,45 @@ const renderBackupManagement = (
       `
     )
     .join("");
+
+  const preparedRestoreHtml = preparedRestore
+    ? `
+      <div class="admin-restore-ready stack">
+        <h3>Prüfung erfolgreich</h3>
+        <dl class="admin-index-meta">
+          <dt>Datei</dt>
+          <dd><code>${escapeHtml(preparedRestore.uploadedFileName)}</code></dd>
+          <dt>Backup erstellt</dt>
+          <dd>${preparedRestore.backupCreatedAt ? escapeHtml(formatDate(preparedRestore.backupCreatedAt)) : "-"}</dd>
+          <dt>Archiv-Einträge</dt>
+          <dd>${preparedRestore.archiveEntries}</dd>
+          <dt>Größe</dt>
+          <dd>${escapeHtml(formatFileSize(preparedRestore.encryptedSizeBytes))}</dd>
+          <dt>Gültig bis</dt>
+          <dd>${escapeHtml(formatDate(preparedRestore.expiresAt))}</dd>
+        </dl>
+        <form method="post" action="/admin/backups/restore/start" class="stack">
+          <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}" />
+          <input type="hidden" name="ticketId" value="${escapeHtml(preparedRestore.id)}" />
+          <label>Backup-Passphrase (erneut)
+            <input type="password" name="passphrase" autocomplete="off" minlength="8" required ${operationRunning ? "disabled" : ""} />
+          </label>
+          <label class="checkline standalone-checkline">
+            <input type="checkbox" name="confirm" value="yes" required ${operationRunning ? "disabled" : ""} />
+            <span>Ich bestätige, dass bestehende Daten durch den Backup-Stand ersetzt werden.</span>
+          </label>
+          <div class="action-row">
+            <button type="submit" ${operationRunning ? "disabled" : ""}>Wiederherstellung starten</button>
+          </div>
+        </form>
+        <form method="post" action="/admin/backups/restore/cancel" class="action-row">
+          <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}" />
+          <input type="hidden" name="ticketId" value="${escapeHtml(preparedRestore.id)}" />
+          <button type="submit" class="secondary tiny" ${operationRunning ? "disabled" : ""}>Vorbereitung verwerfen</button>
+        </form>
+      </div>
+    `
+    : '<p class="muted-note">Noch kein geprüfter Restore-Upload vorbereitet.</p>';
 
   return `
     <section class="content-wrap stack large admin-backup-shell" data-backup-admin data-csrf="${escapeHtml(csrfToken)}">
@@ -579,24 +645,58 @@ const renderBackupManagement = (
             : '<p class="muted-note">Schlüsselstatus: <strong>BACKUP_ENCRYPTION_KEY fehlt</strong>. Bitte in <code>config.env</code> setzen und Dienst neu starten.</p>'
         }
         <div class="action-row">
-          <button type="button" data-backup-start ${status.running || !hasBackupKey ? "disabled" : ""}>Backup jetzt erstellen</button>
+          <button type="button" data-backup-start ${operationRunning || !hasBackupKey ? "disabled" : ""}>Backup jetzt erstellen</button>
         </div>
 
         <div class="admin-index-progress">
           <div class="admin-index-progress-head">
-            <strong data-backup-state>${escapeHtml(stateLabel)}</strong>
-            <span data-backup-percent>${percent}%</span>
+            <strong data-backup-state>${escapeHtml(backupStateLabel)}</strong>
+            <span data-backup-percent>${backupPercent}%</span>
           </div>
-          <progress value="${percent}" max="100" data-backup-progress></progress>
-          <p class="muted-note" data-backup-message>${escapeHtml(status.message)}</p>
+          <progress value="${backupPercent}" max="100" data-backup-progress></progress>
+          <p class="muted-note" data-backup-message>${escapeHtml(backupStatus.message)}</p>
           <p class="muted-note" data-backup-time>
-            Start: ${status.startedAt ? escapeHtml(formatDate(status.startedAt)) : "-"} |
-            Ende: ${status.finishedAt ? escapeHtml(formatDate(status.finishedAt)) : "-"}
+            Start: ${backupStatus.startedAt ? escapeHtml(formatDate(backupStatus.startedAt)) : "-"} |
+            Ende: ${backupStatus.finishedAt ? escapeHtml(formatDate(backupStatus.finishedAt)) : "-"}
           </p>
           <p class="muted-note" data-backup-target>
-            Datei: ${status.archiveFileName ? `<code>${escapeHtml(status.archiveFileName)}</code>` : "-"}
+            Datei: ${backupStatus.archiveFileName ? `<code>${escapeHtml(backupStatus.archiveFileName)}</code>` : "-"}
           </p>
-          <p class="admin-index-error" data-backup-error ${statusError ? "" : "hidden"}>${statusError}</p>
+          <p class="admin-index-error" data-backup-error ${backupStatusError ? "" : "hidden"}>${backupStatusError}</p>
+        </div>
+      </div>
+
+      <div class="admin-index-panel">
+        <h2>Backup wiederherstellen</h2>
+        <p class="muted-note">1. Datei hochladen und prüfen. 2. Wiederherstellung explizit bestätigen. 3. Restore wird mit Fortschritt ausgeführt.</p>
+        <form method="post" action="/admin/backups/restore/prepare" enctype="multipart/form-data" class="stack">
+          <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}" />
+          <label>Backup-Datei (.tar.gz.enc)
+            <input type="file" name="backupFile" accept=".enc,.tar.gz.enc" required ${operationRunning ? "disabled" : ""} />
+          </label>
+          <label>Backup-Passphrase
+            <input type="password" name="passphrase" autocomplete="off" minlength="8" required ${operationRunning ? "disabled" : ""} />
+          </label>
+          <div class="action-row">
+            <button type="submit" class="secondary" ${operationRunning ? "disabled" : ""}>Backup prüfen</button>
+          </div>
+        </form>
+        ${preparedRestoreHtml}
+        <div class="admin-index-progress">
+          <div class="admin-index-progress-head">
+            <strong data-restore-state>${escapeHtml(restoreStateLabel)}</strong>
+            <span data-restore-percent>${restorePercent}%</span>
+          </div>
+          <progress value="${restorePercent}" max="100" data-restore-progress></progress>
+          <p class="muted-note" data-restore-message>${escapeHtml(restoreStatus.message)}</p>
+          <p class="muted-note" data-restore-time>
+            Start: ${restoreStatus.startedAt ? escapeHtml(formatDate(restoreStatus.startedAt)) : "-"} |
+            Ende: ${restoreStatus.finishedAt ? escapeHtml(formatDate(restoreStatus.finishedAt)) : "-"}
+          </p>
+          <p class="muted-note" data-restore-source>
+            Quelle: ${restoreStatus.sourceFileName ? `<code>${escapeHtml(restoreStatus.sourceFileName)}</code>` : "-"}
+          </p>
+          <p class="admin-index-error" data-restore-error ${restoreStatusError ? "" : "hidden"}>${restoreStatusError}</p>
         </div>
       </div>
 
@@ -1214,8 +1314,10 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
 
   app.get("/admin/backups", { preHandler: [requireAdmin] }, async (request, reply) => {
     const query = asRecord(request.query);
-    const status = getBackupStatus();
+    const backupStatus = getBackupStatus();
+    const restoreStatus = getRestoreStatus();
     const files = await listBackupFiles();
+    const preparedRestore = await getPreparedRestoreInfo(request.currentUser?.id);
     const hasBackupKey = Boolean((process.env.BACKUP_ENCRYPTION_KEY ?? "").trim());
 
     const body = `
@@ -1224,7 +1326,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
         description: "Verschlüsselte Datensicherungen erstellen und verwalten.",
         active: "backups"
       })}
-      ${renderBackupManagement(request.csrfToken ?? "", status, files, hasBackupKey)}
+      ${renderBackupManagement(request.csrfToken ?? "", backupStatus, restoreStatus, preparedRestore, files, hasBackupKey)}
     `;
 
     return reply.type("text/html").send(
@@ -1235,7 +1337,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
         csrfToken: request.csrfToken,
         notice: query.notice,
         error: query.error,
-        scripts: ["/admin-backups.js?v=1"]
+        scripts: ["/admin-backups.js?v=2"]
       })
     );
   });
@@ -1246,9 +1348,10 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
       return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
     }
 
-    const status = getBackupStatus();
-    if (status.running) {
-      return reply.redirect("/admin/backups?error=Backup+l%C3%A4uft+bereits.+Bitte+warten.");
+    const backupStatus = getBackupStatus();
+    const restoreStatus = getRestoreStatus();
+    if (backupStatus.running || restoreStatus.running) {
+      return reply.redirect("/admin/backups?error=Aktuell+l%C3%A4uft+ein+Backup+oder+Restore.+Bitte+warten.");
     }
 
     const deleted = await deleteBackupFile(body.fileName ?? "");
@@ -1265,6 +1368,164 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
     return reply.redirect("/admin/backups?notice=Backup+gel%C3%B6scht.");
   });
 
+  app.post("/admin/backups/restore/prepare", { preHandler: [requireAdmin] }, async (request, reply) => {
+    if (!request.isMultipart()) {
+      return reply.redirect("/admin/backups?error=Es+wurde+kein+Multipart-Upload+gesendet.");
+    }
+
+    let csrfToken = "";
+    let passphrase = "";
+    let uploaded:
+      | {
+          filePath: string;
+          fileName: string;
+          originalName: string;
+        }
+      | null = null;
+    let fileCount = 0;
+    let validationError = "";
+
+    try {
+      for await (const part of request.parts({ limits: { files: 1, fields: 8, fileSize: 1024 * 1024 * 1024 } })) {
+        if (part.type === "field") {
+          const value = typeof part.value === "string" ? part.value : String(part.value ?? "");
+          if (part.fieldname === "_csrf") csrfToken = value;
+          if (part.fieldname === "passphrase") passphrase = value;
+          continue;
+        }
+
+        if (part.fieldname !== "backupFile") {
+          part.file.resume();
+          continue;
+        }
+
+        fileCount += 1;
+        if (fileCount > 1 || uploaded) {
+          validationError = "Bitte genau eine Backup-Datei hochladen.";
+          part.file.resume();
+          continue;
+        }
+
+        const target = await createRestoreUploadTarget();
+        const originalName = (part.filename ?? "").trim() || target.fileName;
+
+        await pipeline(part.file, createWriteStream(target.filePath, { flags: "wx" }));
+
+        if (part.file.truncated) {
+          await removeFile(target.filePath);
+          validationError = "Die Upload-Datei ist zu groß.";
+          continue;
+        }
+
+        uploaded = {
+          filePath: target.filePath,
+          fileName: target.fileName,
+          originalName
+        };
+      }
+    } catch (error) {
+      if (uploaded) {
+        await removeFile(uploaded.filePath);
+      }
+
+      request.log.warn({ error }, "Restore-Upload fehlgeschlagen");
+      return reply.redirect("/admin/backups?error=Upload+fehlgeschlagen.+Bitte+Datei+oder+Gr%C3%B6%C3%9Fe+pr%C3%BCfen.");
+    }
+
+    if (!verifySessionCsrfToken(request, csrfToken)) {
+      if (uploaded) {
+        await removeFile(uploaded.filePath);
+      }
+      return reply.redirect("/admin/backups?error=Ung%C3%BCltiges+CSRF-Token.");
+    }
+
+    if (validationError) {
+      if (uploaded) {
+        await removeFile(uploaded.filePath);
+      }
+      return reply.redirect(`/admin/backups?error=${encodeURIComponent(validationError)}`);
+    }
+
+    if (!uploaded) {
+      return reply.redirect("/admin/backups?error=Bitte+eine+Backup-Datei+ausw%C3%A4hlen.");
+    }
+
+    const prepared = await prepareRestoreUpload({
+      stagedFilePath: uploaded.filePath,
+      stagedFileName: uploaded.fileName,
+      uploadedFileName: uploaded.originalName,
+      passphrase,
+      ...(request.currentUser?.id ? { actorId: request.currentUser.id } : {})
+    });
+
+    if (!prepared.ok) {
+      return reply.redirect(`/admin/backups?error=${encodeURIComponent(prepared.error)}`);
+    }
+
+    await writeAuditLog({
+      action: "admin_restore_prepared",
+      actorId: request.currentUser?.id,
+      targetId: prepared.prepared.id,
+      details: {
+        fileName: prepared.prepared.uploadedFileName,
+        archiveEntries: prepared.prepared.archiveEntries
+      }
+    });
+
+    return reply.redirect("/admin/backups?notice=Backup+gepr%C3%BCft.+Bitte+Wiederherstellung+best%C3%A4tigen.");
+  });
+
+  app.post("/admin/backups/restore/cancel", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const body = asRecord(request.body);
+    if (!verifySessionCsrfToken(request, body._csrf ?? "")) {
+      return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
+    }
+
+    const cancelled = await cancelPreparedRestore({
+      ticketId: body.ticketId ?? "",
+      ...(request.currentUser?.id ? { actorId: request.currentUser.id } : {})
+    });
+
+    if (!cancelled) {
+      return reply.redirect("/admin/backups?error=Restore-Vorbereitung+nicht+gefunden+oder+abgelaufen.");
+    }
+
+    await writeAuditLog({
+      action: "admin_restore_preparation_cancelled",
+      actorId: request.currentUser?.id
+    });
+
+    return reply.redirect("/admin/backups?notice=Restore-Vorbereitung+verworfen.");
+  });
+
+  app.post("/admin/backups/restore/start", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const body = asRecord(request.body);
+    if (!verifySessionCsrfToken(request, body._csrf ?? "")) {
+      return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
+    }
+
+    if ((body.confirm ?? "").trim().toLowerCase() !== "yes") {
+      return reply.redirect("/admin/backups?error=Bitte+Wiederherstellung+explizit+best%C3%A4tigen.");
+    }
+
+    const result = startRestoreJob({
+      ticketId: body.ticketId ?? "",
+      passphrase: body.passphrase ?? "",
+      ...(request.currentUser?.id ? { actorId: request.currentUser.id } : {})
+    });
+
+    if (!result.started) {
+      return reply.redirect(`/admin/backups?error=${encodeURIComponent(result.reason ?? "Restore konnte nicht gestartet werden.")}`);
+    }
+
+    await writeAuditLog({
+      action: "admin_restore_started",
+      actorId: request.currentUser?.id
+    });
+
+    return reply.redirect("/admin/backups?notice=Restore+wurde+gestartet.");
+  });
+
   app.get("/admin/backups/download/:fileName", { preHandler: [requireAdmin] }, async (request, reply) => {
     const params = request.params as { fileName: string };
     const fullPath = await resolveBackupFilePath(params.fileName);
@@ -1278,12 +1539,15 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
     return reply.send(createReadStream(fullPath));
   });
 
-  app.get("/admin/api/backups/status", { preHandler: [requireAdmin] }, async (_request, reply) => {
+  app.get("/admin/api/backups/status", { preHandler: [requireAdmin] }, async (request, reply) => {
     const files = await listBackupFiles();
     const hasBackupKey = Boolean((process.env.BACKUP_ENCRYPTION_KEY ?? "").trim());
+    const preparedRestore = await getPreparedRestoreInfo(request.currentUser?.id);
     return reply.send({
       ok: true,
       status: getBackupStatus(),
+      restoreStatus: getRestoreStatus(),
+      preparedRestore,
       files,
       hasBackupKey
     });
@@ -1314,6 +1578,8 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
       started: result.started,
       reason: result.reason,
       status: result.status,
+      restoreStatus: getRestoreStatus(),
+      preparedRestore: await getPreparedRestoreInfo(request.currentUser?.id),
       hasBackupKey: Boolean((process.env.BACKUP_ENCRYPTION_KEY ?? "").trim()),
       files
     });
