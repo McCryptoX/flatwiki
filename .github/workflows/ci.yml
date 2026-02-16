@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  build:
+  stability:
     runs-on: ubuntu-latest
 
     steps:
@@ -17,9 +17,24 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: "npm"
 
       - name: Install dependencies
-        run: npm install
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
 
-      - name: TypeScript build
+      - name: Merge-Conflict-Check
+        run: ./scripts/check-merge-markers.sh
+
+      - name: TypeScript-Build
         run: npm run build
+
+      - name: Smoketest (Login, Erstellen, Backup/Restore)
+        run: ./scripts/smoke-test.sh
+
+      - name: Docker-Build
+        run: docker build -t flatwiki-ci .

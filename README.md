@@ -66,6 +66,7 @@ FlatWiki ist ein modernes, durchsuchbares Flat-File-Wiki mit Login, Rollen, Admi
 - Admin-Gruppenverwaltung (`/admin/groups`)
 - Visueller Setup-Assistent beim ersten Start (`/setup`)
 - Sicherheitsgrundlagen: `scrypt`, CSRF, Rate-Limit, Security-Header, Audit-Log
+- Stabilitäts-Checks in CI (Merge-Konfliktmarker, TypeScript-Build, Smoketest, Docker-Build)
 
 ## Screenshots
 
@@ -295,6 +296,17 @@ Empfehlung:
 
 ```bash
 git status --short
+```
+
+## Stabilität prüfen (lokal)
+
+Vor einem Release/Push kannst du die Kernchecks lokal ausführen:
+
+```bash
+./scripts/check-merge-markers.sh
+npm run build
+./scripts/smoke-test.sh
+docker build -t flatwiki-local-check .
 ```
 
 ## Backup und Restore (verschlüsselt)
