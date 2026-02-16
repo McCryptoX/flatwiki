@@ -318,6 +318,13 @@ Restore im Admin-Menü (Wizard):
 2. Nach erfolgreicher Prüfung die Wiederherstellung explizit bestätigen.
 3. Restore läuft asynchron mit Fortschrittsanzeige.
 
+Wichtig zur Passphrase:
+
+- Die Restore-Passphrase ist **exakt** der Wert von `BACKUP_ENCRYPTION_KEY` aus `config.env`.
+- Es ist **nicht** das FlatWiki-Login-Passwort.
+- Im Admin-Bereich wird dazu ein gekürzter Fingerprint angezeigt (ohne Secret-Ausgabe).
+- Schlüssel sicher dokumentieren (z. B. Passwortmanager), sonst sind Backups bei Schlüsselverlust nicht mehr nutzbar.
+
 CLI-Backup mit separatem Schlüssel:
 
 ```bash

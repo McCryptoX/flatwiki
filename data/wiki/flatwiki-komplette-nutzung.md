@@ -176,19 +176,37 @@ Optional kann der Suchindex im Hybrid-Modus in SQLite liegen:
 
 ### Backup
 
-Regelmaessig den Ordner `data/` sichern.
+FlatWiki kann Backups im Admin-Bereich erstellen:
+
+1. Admin -> **Backups**
+2. **Backup jetzt erstellen**
+3. Datei aus `data/backups/` herunterladen (optional)
+
+Automatische Backups + Retention:
+
+- ueber `config.env` steuerbar (`BACKUP_AUTO_ENABLED`, `BACKUP_AUTO_INTERVAL_HOURS`, `BACKUP_RETENTION_MAX_FILES`, `BACKUP_RETENTION_MAX_AGE_DAYS`)
+- Status und naechster Lauf sind in Admin -> Backups sichtbar
 
 Beispiel:
 
 ```bash
-tar -czf flatwiki-backup-$(date +%F).tar.gz data
+export BACKUP_ENCRYPTION_KEY='dein_backup_key'
+./scripts/backup-encrypted.sh
 ```
 
 ### Restore
 
-1. Dienst stoppen.
-2. `data/` aus Backup zurueckspielen.
-3. Dienst neu starten.
+Im Admin-Bereich:
+
+1. Admin -> **Backups**
+2. `.tar.gz.enc` hochladen und pruefen
+3. Wiederherstellung explizit bestaetigen
+
+Wichtig:
+
+- Die Passphrase fuer Backup/Restore ist **genau** `BACKUP_ENCRYPTION_KEY` aus `config.env`.
+- Das ist **nicht** dein Login-Passwort.
+- Wenn dieser Schluessel verloren geht, koennen verschluesselte Backups nicht mehr wiederhergestellt werden.
 
 ## 14. DSGVO-orientierter Betrieb
 
