@@ -84,11 +84,7 @@ export const renderLayout = (options: LayoutOptions): string => {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="referrer" content="same-origin" />
     <title>${title}</title>
-<<<<<<< HEAD
-    <link rel="stylesheet" href="/styles.css?v=13" />
-=======
     <link rel="stylesheet" href="/styles.css?v=16" />
->>>>>>> ec58d38 (feat: scheduled backups with retention, history diff view and active ToC section highlight)
   </head>
   <body>
     <div class="bg-shape bg-shape-1"></div>
