@@ -5,7 +5,7 @@ export const registerPublicRoutes = async (app: FastifyInstance): Promise<void> 
   app.get("/privacy", async (request, reply) => {
     const body = `
       <section class="content-wrap legal">
-        <h1>Datenschutzhinweise (DSGVO)</h1>
+        <h1>Datenschutzhinweise</h1>
         <p>Diese Anwendung ist als datensparsame Flat-File-Wiki-Lösung konzipiert.</p>
 
         <h2>Verarbeitete Daten</h2>

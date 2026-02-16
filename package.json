@@ -4,7 +4,7 @@
   "private": true,
   "license": "MIT",
   "type": "module",
-  "description": "DSGVO-bewusstes Flat-File-Wiki mit Auth, Suche und Adminverwaltung",
+  "description": "Datenschutzfreundliches Flat-File-Wiki mit Auth, Suche und Adminverwaltung",
   "engines": {
     "node": ">=20.10.0"
   },

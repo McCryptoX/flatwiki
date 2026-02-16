@@ -93,7 +93,7 @@ export const registerAccountRoutes = async (app: FastifyInstance): Promise<void>
         </form>
 
         <hr />
-        <h2>Datenexport (DSGVO)</h2>
+        <h2>Datenexport (Datenschutz)</h2>
         <p>Du kannst deine gespeicherten Kontodaten inklusive eigener Artikelübersicht und Markdown-Speicherdump als JSON exportieren.</p>
         <a class="button secondary" href="/account/export">Meine Daten herunterladen</a>
 

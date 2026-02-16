@@ -224,7 +224,7 @@ Wichtig:
 - Das ist **nicht** dein Login-Passwort.
 - Wenn dieser Schluessel verloren geht, koennen verschluesselte Backups nicht mehr wiederhergestellt werden.
 
-## 14. DSGVO-orientierter Betrieb
+## 14. Datenschutzfreundlicher Betrieb
 
 FlatWiki enthaelt technische Schutzmechanismen:
 

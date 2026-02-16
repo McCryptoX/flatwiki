@@ -1241,7 +1241,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
     const body = `
       ${renderAdminHeader({
         title: "Benutzerverwaltung",
-        description: "Konten DSGVO-bewusst verwalten (minimal gespeicherte Stammdaten).",
+        description: "Konten datenschutzfreundlich verwalten (minimal gespeicherte Stammdaten).",
         active: "users",
         actions: '<a class="button" href="/admin/users/new">Neuen Benutzer anlegen</a>'
       })}
