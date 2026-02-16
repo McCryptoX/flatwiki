@@ -33,6 +33,23 @@ export interface WikiCategory {
   updatedAt: string;
 }
 
+export type WikiTemplateSensitivity = "normal" | "sensitive";
+
+export interface WikiPageTemplate {
+  id: string;
+  name: string;
+  description: string;
+  defaultTitle: string;
+  defaultTags: string[];
+  defaultContent: string;
+  sensitivity: WikiTemplateSensitivity;
+  enabled: boolean;
+  sortOrder: number;
+  system: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SessionRecord {
   id: string;
   userId: string;

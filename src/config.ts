@@ -160,6 +160,7 @@ export const config = {
   versionsDir: path.join(rootDir, "data", "versions"),
   backupDir: path.join(rootDir, "data", "backups"),
   categoriesFile: path.join(rootDir, "data", "categories.json"),
+  templatesFile: path.join(rootDir, "data", "templates.json"),
   groupsFile: path.join(rootDir, "data", "groups.json"),
   usersFile: path.join(rootDir, "data", "users.json"),
   sessionsFile: path.join(rootDir, "data", "sessions.json"),

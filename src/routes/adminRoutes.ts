@@ -17,6 +17,7 @@ import {
   setGroupMembers,
   updateGroup
 } from "../lib/groupStore.js";
+import { createTemplate, deleteTemplate, listTemplates, updateTemplate } from "../lib/templateStore.js";
 import {
   ensureSearchIndexConsistency,
   getSearchIndexBuildStatus,
@@ -90,6 +91,17 @@ const readMany = (value: unknown): string[] => {
   }
   return [];
 };
+
+const readCheckbox = (value: unknown): boolean => {
+  const normalized = readSingle(value).trim().toLowerCase();
+  return normalized === "1" || normalized === "on" || normalized === "true" || normalized === "yes";
+};
+
+const parseCsvTags = (raw: string): string[] =>
+  raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
 
 const renderUsersTable = (csrfToken: string, ownUserId: string, users: Awaited<ReturnType<typeof listUsers>>): string => {
   if (users.length === 0) {
@@ -296,6 +308,88 @@ const renderCategoriesTable = (
             .join("")}
         </tbody>
       </table>
+    </div>
+  `;
+};
+
+const renderTemplateCards = (
+  csrfToken: string,
+  templates: Awaited<ReturnType<typeof listTemplates>>
+): string => {
+  if (templates.length < 1) {
+    return '<p class="empty">Keine Vorlagen vorhanden.</p>';
+  }
+
+  return `
+    <div class="stack">
+      ${templates
+        .map((template) => {
+          const isBlankTemplate = template.id === "blank";
+          const tagsValue = template.defaultTags.join(", ");
+          return `
+            <article class="admin-index-panel stack">
+              <form method="post" action="/admin/templates/${encodeURIComponent(template.id)}/update" class="stack">
+                <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}" />
+                ${
+                  isBlankTemplate
+                    ? '<input type="hidden" name="enabled" value="1" />'
+                    : ""
+                }
+                <label class="checkline standalone-checkline">
+                  <input type="checkbox" name="enabled" value="1" ${template.enabled ? "checked" : ""} ${isBlankTemplate ? "disabled" : ""} />
+                  <span>Vorlage aktiv</span>
+                </label>
+                <label>Name
+                  <input type="text" name="name" value="${escapeHtml(template.name)}" minlength="2" maxlength="80" required />
+                </label>
+                <label>Beschreibung (optional)
+                  <input type="text" name="description" value="${escapeHtml(template.description)}" maxlength="260" />
+                </label>
+                <div class="action-row">
+                  <label>Schutzmodus
+                    <select name="sensitivity">
+                      <option value="normal" ${template.sensitivity === "normal" ? "selected" : ""}>Standard</option>
+                      <option value="sensitive" ${template.sensitivity === "sensitive" ? "selected" : ""}>Sensibel</option>
+                    </select>
+                  </label>
+                  <label>Reihenfolge
+                    <input type="number" name="sortOrder" value="${template.sortOrder}" min="-100000" max="100000" />
+                  </label>
+                </div>
+                <label>Vorgabe-Titel
+                  <input type="text" name="defaultTitle" value="${escapeHtml(template.defaultTitle)}" maxlength="120" />
+                </label>
+                <label>Vorgabe-Tags (kommagetrennt)
+                  <input type="text" name="defaultTags" value="${escapeHtml(tagsValue)}" />
+                </label>
+                <label>Vorgabe-Inhalt (Markdown)
+                  <textarea name="defaultContent" rows="8">${escapeHtml(template.defaultContent)}</textarea>
+                </label>
+                <div class="action-row">
+                  <button type="submit">Vorlage speichern</button>
+                </div>
+              </form>
+              <p class="muted-note small">
+                ID: <code>${escapeHtml(template.id)}</code> |
+                Typ: ${template.system ? "Systemvorlage" : "Benutzerdefiniert"} |
+                Aktualisiert: ${escapeHtml(formatDate(template.updatedAt))}
+              </p>
+              ${
+                template.system
+                  ? ""
+                  : `
+                    <form method="post" action="/admin/templates/${encodeURIComponent(
+                      template.id
+                    )}/delete" class="action-row" onsubmit="return confirm('Vorlage wirklich löschen?')">
+                      <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}" />
+                      <button type="submit" class="danger tiny">Vorlage löschen</button>
+                    </form>
+                  `
+              }
+            </article>
+          `;
+        })
+        .join("")}
     </div>
   `;
 };
@@ -835,12 +929,13 @@ const renderBrokenLinksPanel = (items: Awaited<ReturnType<typeof listBrokenInter
   `;
 };
 
-type AdminNavKey = "users" | "media" | "categories" | "groups" | "versions" | "backups" | "links" | "index";
+type AdminNavKey = "users" | "media" | "categories" | "templates" | "groups" | "versions" | "backups" | "links" | "index";
 
 const ADMIN_NAV_ITEMS: Array<{ key: AdminNavKey; href: string; label: string }> = [
   { key: "users", href: "/admin/users", label: "Benutzerverwaltung" },
   { key: "media", href: "/admin/media", label: "Bildverwaltung" },
   { key: "categories", href: "/admin/categories", label: "Kategorien" },
+  { key: "templates", href: "/admin/templates", label: "Vorlagen" },
   { key: "groups", href: "/admin/groups", label: "Gruppen" },
   { key: "versions", href: "/admin/versions", label: "Versionen" },
   { key: "backups", href: "/admin/backups", label: "Backups" },
@@ -1090,6 +1185,172 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
     });
 
     return reply.redirect(`/admin/categories?notice=${encodeURIComponent("Kategorie umbenannt.")}`);
+  });
+
+  app.get("/admin/templates", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const query = asRecord(request.query);
+    const templates = await listTemplates({ includeDisabled: true });
+
+    const body = `
+      ${renderAdminHeader({
+        title: "Vorlagen",
+        description: "Inhaltstypen für den Seiten-Assistenten aktivieren, sortieren und anpassen.",
+        active: "templates"
+      })}
+      <section class="content-wrap stack">
+        <form method="post" action="/admin/templates/new" class="stack">
+          <input type="hidden" name="_csrf" value="${escapeHtml(request.csrfToken ?? "")}" />
+          <h2>Neue Vorlage anlegen</h2>
+          <label>Name
+            <input type="text" name="name" minlength="2" maxlength="80" required />
+          </label>
+          <label>Beschreibung (optional)
+            <input type="text" name="description" maxlength="260" />
+          </label>
+          <div class="action-row">
+            <label>Schutzmodus
+              <select name="sensitivity">
+                <option value="normal" selected>Standard</option>
+                <option value="sensitive">Sensibel</option>
+              </select>
+            </label>
+            <label>Reihenfolge
+              <input type="number" name="sortOrder" value="100" min="-100000" max="100000" />
+            </label>
+          </div>
+          <label>Vorgabe-Titel
+            <input type="text" name="defaultTitle" maxlength="120" />
+          </label>
+          <label>Vorgabe-Tags (kommagetrennt)
+            <input type="text" name="defaultTags" placeholder="z. B. idee, intern" />
+          </label>
+          <label>Vorgabe-Inhalt (Markdown)
+            <textarea name="defaultContent" rows="8"></textarea>
+          </label>
+          <label class="checkline standalone-checkline">
+            <input type="checkbox" name="enabled" value="1" checked />
+            <span>Vorlage sofort aktivieren</span>
+          </label>
+          <div class="action-row">
+            <button type="submit">Vorlage anlegen</button>
+          </div>
+        </form>
+
+        <h2>Vorlagen verwalten</h2>
+        <p class="muted-note">Nur aktive Vorlagen werden im Assistenten bei "Neue Seite" angezeigt.</p>
+        ${renderTemplateCards(request.csrfToken ?? "", templates)}
+      </section>
+    `;
+
+    return reply.type("text/html").send(
+      renderLayout({
+        title: "Vorlagen",
+        body,
+        user: request.currentUser,
+        csrfToken: request.csrfToken,
+        notice: query.notice,
+        error: query.error
+      })
+    );
+  });
+
+  app.post("/admin/templates/new", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const body = asRecord(request.body);
+    if (!verifySessionCsrfToken(request, body._csrf ?? "")) {
+      return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
+    }
+
+    const sortOrderRaw = readSingle(body.sortOrder).trim();
+    let sortOrder: number | undefined;
+    if (sortOrderRaw) {
+      const parsedSortOrder = Number.parseInt(sortOrderRaw, 10);
+      if (!Number.isFinite(parsedSortOrder)) {
+        return reply.redirect("/admin/templates?error=Ung%C3%BCltige+Reihenfolge.");
+      }
+      sortOrder = parsedSortOrder;
+    }
+
+    const result = await createTemplate({
+      name: body.name ?? "",
+      description: body.description ?? "",
+      defaultTitle: body.defaultTitle ?? "",
+      defaultTags: parseCsvTags(body.defaultTags ?? ""),
+      defaultContent: body.defaultContent ?? "",
+      sensitivity: readSingle(body.sensitivity) === "sensitive" ? "sensitive" : "normal",
+      enabled: readCheckbox(body.enabled),
+      ...(sortOrder !== undefined ? { sortOrder } : {})
+    });
+
+    if (!result.ok) {
+      return reply.redirect(`/admin/templates?error=${encodeURIComponent(result.error ?? "Vorlage konnte nicht erstellt werden.")}`);
+    }
+
+    await writeAuditLog({
+      action: "admin_template_created",
+      actorId: request.currentUser?.id,
+      targetId: result.template?.id
+    });
+
+    return reply.redirect("/admin/templates?notice=Vorlage+erstellt.");
+  });
+
+  app.post("/admin/templates/:id/update", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const params = request.params as { id: string };
+    const body = asRecord(request.body);
+    if (!verifySessionCsrfToken(request, body._csrf ?? "")) {
+      return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
+    }
+
+    const sortOrderRaw = readSingle(body.sortOrder).trim();
+    const parsedSortOrder = Number.parseInt(sortOrderRaw || "0", 10);
+    if (!Number.isFinite(parsedSortOrder)) {
+      return reply.redirect("/admin/templates?error=Ung%C3%BCltige+Reihenfolge.");
+    }
+
+    const result = await updateTemplate({
+      id: params.id,
+      name: body.name ?? "",
+      description: body.description ?? "",
+      defaultTitle: body.defaultTitle ?? "",
+      defaultTags: parseCsvTags(body.defaultTags ?? ""),
+      defaultContent: body.defaultContent ?? "",
+      sensitivity: readSingle(body.sensitivity) === "sensitive" ? "sensitive" : "normal",
+      enabled: readCheckbox(body.enabled),
+      sortOrder: parsedSortOrder
+    });
+
+    if (!result.ok) {
+      return reply.redirect(`/admin/templates?error=${encodeURIComponent(result.error ?? "Vorlage konnte nicht gespeichert werden.")}`);
+    }
+
+    await writeAuditLog({
+      action: "admin_template_updated",
+      actorId: request.currentUser?.id,
+      targetId: result.template?.id
+    });
+
+    return reply.redirect("/admin/templates?notice=Vorlage+gespeichert.");
+  });
+
+  app.post("/admin/templates/:id/delete", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const params = request.params as { id: string };
+    const body = asRecord(request.body);
+    if (!verifySessionCsrfToken(request, body._csrf ?? "")) {
+      return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
+    }
+
+    const result = await deleteTemplate(params.id);
+    if (!result.ok) {
+      return reply.redirect(`/admin/templates?error=${encodeURIComponent(result.error ?? "Vorlage konnte nicht gelöscht werden.")}`);
+    }
+
+    await writeAuditLog({
+      action: "admin_template_deleted",
+      actorId: request.currentUser?.id,
+      targetId: params.id
+    });
+
+    return reply.redirect("/admin/templates?notice=Vorlage+gel%C3%B6scht.");
   });
 
   app.get("/admin/groups", { preHandler: [requireAdmin] }, async (request, reply) => {

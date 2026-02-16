@@ -11,6 +11,7 @@ import { attachCurrentUser } from "./lib/auth.js";
 import { ensureDefaultCategory } from "./lib/categoryStore.js";
 import { initBackupAutomation } from "./lib/backupStore.js";
 import { ensureDir, ensureFile } from "./lib/fileStore.js";
+import { ensureDefaultTemplates } from "./lib/templateStore.js";
 import { initRuntimeSettings } from "./lib/runtimeSettingsStore.js";
 import { ensureSearchIndexConsistency } from "./lib/searchIndexStore.js";
 import { purgeExpiredSessions } from "./lib/sessionStore.js";
@@ -35,6 +36,7 @@ const bootstrapDataStorage = async (): Promise<void> => {
   await ensureDir(config.versionsDir);
   await ensureDir(config.backupDir);
   await ensureFile(config.categoriesFile, "[]\n");
+  await ensureFile(config.templatesFile, "[]\n");
   await ensureFile(config.groupsFile, "[]\n");
   await ensureFile(config.usersFile, "[]\n");
   await ensureFile(config.sessionsFile, "[]\n");
@@ -111,6 +113,7 @@ const start = async (): Promise<void> => {
     await bootstrapDataStorage();
     await initRuntimeSettings();
     await ensureDefaultCategory();
+    await ensureDefaultTemplates();
     initBackupAutomation({
       info: (obj, msg) => app.log.info(obj, msg),
       warn: (obj, msg) => app.log.warn(obj, msg)

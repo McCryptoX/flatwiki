@@ -7,6 +7,7 @@ import { requireAdmin, requireAuth, verifySessionCsrfToken } from "../lib/auth.j
 import { writeAuditLog } from "../lib/audit.js";
 import { findCategoryById, getDefaultCategory, listCategories } from "../lib/categoryStore.js";
 import { listGroups } from "../lib/groupStore.js";
+import { listTemplates } from "../lib/templateStore.js";
 import { config } from "../config.js";
 import { ensureDir } from "../lib/fileStore.js";
 import { cleanupUnusedUploads, extractUploadReferencesFromMarkdown } from "../lib/mediaStore.js";
@@ -60,6 +61,12 @@ const readMany = (value: unknown): string[] => {
 
   return [];
 };
+
+const serializeJsonForHtmlScript = (value: unknown): string =>
+  JSON.stringify(value)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
 
 const normalizeUsernames = (values: string[]): string[] => {
   const seen = new Set<string>();
@@ -338,6 +345,15 @@ const renderEditorForm = (params: {
   allowedGroups: string[];
   availableUsers: Array<{ username: string; displayName: string }>;
   availableGroups: Array<{ id: string; name: string; description: string }>;
+  pageTemplates: Array<{
+    id: string;
+    name: string;
+    description: string;
+    defaultTitle: string;
+    defaultTags: string[];
+    defaultContent: string;
+    sensitivity: "normal" | "sensitive";
+  }>;
   encrypted: boolean;
   encryptionAvailable: boolean;
 }): string => `
@@ -363,11 +379,18 @@ const renderEditorForm = (params: {
                 <div class="wizard-panel">
                   <label class="wizard-heading">Inhaltstyp auswählen</label>
                   <div class="wizard-template-grid">
-                    <button type="button" class="button secondary tiny wizard-template" data-template-id="idea">Idee</button>
-                    <button type="button" class="button secondary tiny wizard-template" data-template-id="documentation">Dokumentation</button>
-                    <button type="button" class="button secondary tiny wizard-template" data-template-id="travel">Reisebericht</button>
-                    <button type="button" class="button secondary tiny wizard-template" data-template-id="finance">Finanznotiz</button>
-                    <button type="button" class="button secondary tiny wizard-template" data-template-id="blank">Leer starten</button>
+                    ${
+                      params.pageTemplates.length > 0
+                        ? params.pageTemplates
+                            .map(
+                              (template) =>
+                                `<button type="button" class="button secondary tiny wizard-template" data-template-id="${escapeHtml(
+                                  template.id
+                                )}" title="${escapeHtml(template.description || template.name)}">${escapeHtml(template.name)}</button>`
+                            )
+                            .join("")
+                        : '<button type="button" class="button secondary tiny wizard-template" data-template-id="blank">Leer starten</button>'
+                    }
                   </div>
                 </div>
 
@@ -397,6 +420,17 @@ const renderEditorForm = (params: {
                   </p>
                 </div>
               </section>
+              <script type="application/json" data-template-presets>${serializeJsonForHtmlScript(
+                params.pageTemplates.map((template) => ({
+                  id: template.id,
+                  name: template.name,
+                  description: template.description,
+                  defaultTitle: template.defaultTitle,
+                  defaultTags: template.defaultTags,
+                  defaultContent: template.defaultContent,
+                  sensitivity: template.sensitivity
+                }))
+              )}</script>
             `
             : ""
         }
@@ -775,6 +809,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
   app.get("/new", { preHandler: [requireAuth] }, async (request, reply) => {
     const query = asObject(request.query);
     const categories = await listCategories();
+    const pageTemplates = await listTemplates({ includeDisabled: false });
     const defaultCategory = await getDefaultCategory();
     const groups = await listGroups();
     const users = (await listUsers())
@@ -808,6 +843,15 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
       allowedGroups,
       availableUsers: users,
       availableGroups: groups.map((group) => ({ id: group.id, name: group.name, description: group.description })),
+      pageTemplates: pageTemplates.map((template) => ({
+        id: template.id,
+        name: template.name,
+        description: template.description,
+        defaultTitle: template.defaultTitle,
+        defaultTags: template.defaultTags,
+        defaultContent: template.defaultContent,
+        sensitivity: template.sensitivity
+      })),
       encrypted,
       encryptionAvailable: Boolean(config.contentEncryptionKey)
     });
@@ -819,7 +863,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         user: request.currentUser,
         csrfToken: request.csrfToken,
         error: readSingle(query.error),
-        scripts: ["/wiki-ui.js?v=9"]
+        scripts: ["/wiki-ui.js?v=10"]
       })
     );
   });
@@ -999,6 +1043,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
       allowedGroups,
       availableUsers: users,
       availableGroups: groups.map((group) => ({ id: group.id, name: group.name, description: group.description })),
+      pageTemplates: [],
       encrypted,
       encryptionAvailable: Boolean(config.contentEncryptionKey)
     });
@@ -1010,7 +1055,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         user: request.currentUser,
         csrfToken: request.csrfToken,
         error: readSingle(query.error),
-        scripts: ["/wiki-ui.js?v=9"]
+        scripts: ["/wiki-ui.js?v=10"]
       })
     );
   });

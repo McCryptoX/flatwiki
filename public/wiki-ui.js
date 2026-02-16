@@ -99,92 +99,53 @@
       .replace(/^-+|-+$/g, "")
       .slice(0, 80);
 
-  const TEMPLATE_PRESETS = {
-    idea: {
-      title: "Neue Idee",
-      tags: "idee",
-      content: `## Idee in einem Satz
+  const loadTemplatePresets = (editorShell) => {
+    const fallback = [
+      {
+        id: "blank",
+        defaultTitle: "",
+        defaultTags: [],
+        defaultContent: "",
+        sensitivity: "normal"
+      }
+    ];
 
-Beschreibe die Idee kurz und klar.
+    const script = editorShell.querySelector("script[data-template-presets]");
+    if (!(script instanceof HTMLScriptElement)) {
+      return fallback;
+    }
 
-## Ziel / Nutzen
+    try {
+      const parsed = JSON.parse(script.textContent || "[]");
+      if (!Array.isArray(parsed)) return fallback;
 
-- Welches Problem wird gelöst?
-- Für wen ist es hilfreich?
+      const presets = parsed
+        .map((entry) => {
+          if (!entry || typeof entry !== "object") return null;
+          const id = String(entry.id || "").trim();
+          if (!id) return null;
+          const defaultTags = Array.isArray(entry.defaultTags)
+            ? entry.defaultTags
+                .map((tag) => String(tag || "").trim())
+                .filter((tag) => tag.length > 0)
+            : [];
+          return {
+            id,
+            defaultTitle: String(entry.defaultTitle || ""),
+            defaultTags,
+            defaultContent: String(entry.defaultContent || ""),
+            sensitivity: entry.sensitivity === "sensitive" ? "sensitive" : "normal"
+          };
+        })
+        .filter((entry) => entry !== null);
 
-## Nächste Schritte
-
-- [ ] Ersten Entwurf erstellen
-- [ ] Aufwand einschätzen
-- [ ] Entscheidung treffen`
-    },
-    documentation: {
-      title: "Neue Dokumentation",
-      tags: "doku,howto",
-      content: `## Zweck
-
-Wofür ist diese Dokumentation gedacht?
-
-## Schritt-für-Schritt
-
-1. Schritt 1
-2. Schritt 2
-3. Schritt 3
-
-## Fehlerbehebung
-
-- Problem:
-- Lösung:`
-    },
-    travel: {
-      title: "Reisebericht",
-      tags: "reise,urlaub",
-      content: `## Reiseüberblick
-
-- Zeitraum:
-- Ort:
-- Mit wem:
-
-## Tagesnotizen
-
-### Tag 1
-
-Was ist passiert?
-
-### Tag 2
-
-Was war besonders?
-
-## Tipps für das nächste Mal
-
-- Tipp 1
-- Tipp 2`
-    },
-    finance: {
-      title: "Finanznotiz",
-      tags: "finanzen,sensibel",
-      content: `## Zusammenfassung
-
-Kurzer Überblick über den aktuellen Stand.
-
-## Konten / Depots
-
-- Konto/Depot A:
-- Konto/Depot B:
-
-## Änderungen
-
-- Datum:
-- Was wurde geändert:
-
-## Hinweis
-
-Keine PIN/TAN im Klartext speichern. Für besonders sensible Daten verschlüsseln und Zugriff einschränken.`
-    },
-    blank: {
-      title: "",
-      tags: "",
-      content: ""
+      if (presets.length < 1) return fallback;
+      if (!presets.some((entry) => entry.id === "blank")) {
+        presets.push(fallback[0]);
+      }
+      return presets;
+    } catch {
+      return fallback;
     }
   };
 
@@ -350,6 +311,17 @@ Keine PIN/TAN im Klartext speichern. Für besonders sensible Daten verschlüssel
       slugInput.dataset.slugAuto = isAuto ? "1" : "0";
     };
 
+    const templatePresets = loadTemplatePresets(editorShell);
+    const templatePresetMap = new Map(templatePresets.map((preset) => [preset.id, preset]));
+    const blankPreset =
+      templatePresetMap.get("blank") || {
+        id: "blank",
+        defaultTitle: "",
+        defaultTags: [],
+        defaultContent: "",
+        sensitivity: "normal"
+      };
+
     let selectedTemplateId = "";
     let selectedSensitivity = "";
 
@@ -419,20 +391,25 @@ Keine PIN/TAN im Klartext speichern. Für besonders sensible Daten verschlüssel
 
     const applyTemplatePreset = (templateId) => {
       if (!(titleInput instanceof HTMLInputElement) || !(tagsInput instanceof HTMLInputElement)) return;
-      const preset = TEMPLATE_PRESETS[templateId] || TEMPLATE_PRESETS.blank;
+      const normalizedTemplateId = String(templateId || "").trim();
+      const preset = templatePresetMap.get(normalizedTemplateId) || blankPreset;
+      const resolvedTemplateId = templatePresetMap.has(normalizedTemplateId)
+        ? normalizedTemplateId
+        : blankPreset.id;
 
       const shouldConfirmReplace =
         contentTextarea.value.trim().length > 0 &&
-        contentTextarea.value.trim() !== String(preset.content || "").trim();
+        contentTextarea.value.trim() !== String(preset.defaultContent || "").trim();
       if (shouldConfirmReplace && !window.confirm("Vorlage anwenden und vorhandenen Inhalt ersetzen?")) {
         return;
       }
 
-      selectedTemplateId = templateId;
-      titleInput.value = preset.title || "";
-      tagsInput.value = preset.tags || "";
-      contentTextarea.value = preset.content || "";
+      selectedTemplateId = resolvedTemplateId;
+      titleInput.value = preset.defaultTitle || "";
+      tagsInput.value = Array.isArray(preset.defaultTags) ? preset.defaultTags.join(", ") : "";
+      contentTextarea.value = preset.defaultContent || "";
       contentTextarea.dispatchEvent(new Event("input", { bubbles: true }));
+      applySensitivity(preset.sensitivity === "sensitive" ? "sensitive" : "normal");
 
       if (slugInput instanceof HTMLInputElement && !slugInput.readOnly) {
         slugInput.dataset.slugAuto = "1";
@@ -441,7 +418,7 @@ Keine PIN/TAN im Klartext speichern. Für besonders sensible Daten verschlüssel
 
       for (const button of wizardTemplateButtons) {
         if (!(button instanceof HTMLButtonElement)) continue;
-        button.classList.toggle("is-selected", (button.dataset.templateId || "") === templateId);
+        button.classList.toggle("is-selected", (button.dataset.templateId || "") === resolvedTemplateId);
       }
 
       renderWizardStates();
