@@ -210,6 +210,25 @@ const renderCategoryFilter = (
   </form>
 `;
 
+const renderDashboardCategoryFilter = (
+  categories: Array<{ id: string; name: string }>,
+  selectedCategoryId: string
+): string => `
+  <form method="get" action="/" class="dashboard-filter-row">
+    <label class="sr-only" for="dashboard-category-filter">Kategorie</label>
+    <select id="dashboard-category-filter" name="category" class="tiny" onchange="this.form.submit()">
+      <option value="">Alle Kategorien</option>
+      ${categories
+        .map(
+          (category) =>
+            `<option value="${escapeHtml(category.id)}" ${category.id === selectedCategoryId ? "selected" : ""}>${escapeHtml(category.name)}</option>`
+        )
+        .join("")}
+    </select>
+    ${selectedCategoryId ? '<a class="dashboard-reset-link" href="/">Zurücksetzen</a>' : ""}
+  </form>
+`;
+
 const parsePageNumber = (raw: string): number => {
   const parsed = Number.parseInt(raw, 10);
   if (!Number.isFinite(parsed) || parsed < 1) return 1;
@@ -432,9 +451,7 @@ const renderRecentPages = (pages: WikiPageSummary[]): string => {
           (page) => `
             <a class="dashboard-recent-item" href="/wiki/${encodeURIComponent(page.slug)}">
               <strong>${escapeHtml(page.title)}</strong>
-              <span>${escapeHtml(page.categoryName)} • ${escapeHtml(formatDate(page.updatedAt))}${
-                page.updatedBy && page.updatedBy !== "unknown" ? ` • ${escapeHtml(page.updatedBy)}` : ""
-              }</span>
+              <span>${escapeHtml(page.categoryName)} • ${escapeHtml(formatDate(page.updatedAt))}</span>
             </a>
           `
         )
@@ -775,7 +792,8 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     const quickTemplates = quickTemplateIds
       .map((id) => templateMap.get(id))
       .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
-    const recentPages = pages.slice(0, 8);
+    const recentPages = pages.slice(0, 5);
+    const showArticleListOpen = paged.page > 1 || selectedCategoryId.length > 0;
 
     const body = `
       <section class="dashboard-shell stack large">
@@ -783,10 +801,9 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
           <div>
             <h1>Startseite</h1>
             <p>Schnell starten und aktuelle Inhalte direkt sehen.</p>
-            ${renderCategoryFilter("/", categories, selectedCategoryId)}
+            ${renderDashboardCategoryFilter(categories, selectedCategoryId)}
           </div>
-          <div class="action-row">
-            <a class="button secondary" href="/toc">Inhaltsverzeichnis</a>
+          <div class="action-row dashboard-primary-actions">
             <a class="button" href="/new">Neue Seite</a>
           </div>
         </section>
@@ -818,6 +835,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
               <span>Freie Seite ohne Vorlage.</span>
             </a>
           </div>
+          <p class="muted-note small">Vollständige Übersicht im <a href="/toc">Inhaltsverzeichnis</a>.</p>
         </section>
 
         <section class="content-wrap stack">
@@ -826,11 +844,15 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         </section>
 
         <section class="content-wrap stack">
-          <h2>Alle Artikel</h2>
-          ${renderPageList(paged.slice)}
-          ${renderPager("/", paged.page, paged.totalPages, {
-            category: selectedCategoryId
-          })}
+          <details class="dashboard-article-panel" ${showArticleListOpen ? "open" : ""}>
+            <summary>Alle Artikel (${pages.length})</summary>
+            <div class="stack">
+              ${renderPageList(paged.slice)}
+              ${renderPager("/", paged.page, paged.totalPages, {
+                category: selectedCategoryId
+              })}
+            </div>
+          </details>
         </section>
       </section>
     `;

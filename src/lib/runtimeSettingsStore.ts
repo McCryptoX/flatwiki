@@ -19,10 +19,10 @@ interface RuntimeSettings {
 
 let initialized = false;
 let currentIndexBackend: IndexBackend = config.indexBackend;
-let currentUiMode: UiMode = "advanced";
+let currentUiMode: UiMode = "simple";
 
 const normalizeIndexBackend = (value: string | undefined): IndexBackend => (value?.trim().toLowerCase() === "sqlite" ? "sqlite" : "flat");
-const normalizeUiMode = (value: string | undefined): UiMode => (value?.trim().toLowerCase() === "simple" ? "simple" : "advanced");
+const normalizeUiMode = (value: string | undefined): UiMode => (value?.trim().toLowerCase() === "advanced" ? "advanced" : "simple");
 
 const loadRuntimeSettingsFile = async (): Promise<RuntimeSettingsFile> => {
   await ensureFile(config.runtimeSettingsFile, "{}\n");
@@ -39,7 +39,7 @@ export const initRuntimeSettings = async (): Promise<void> => {
 const ensureInitialized = (): void => {
   if (!initialized) {
     currentIndexBackend = config.indexBackend;
-    currentUiMode = "advanced";
+    currentUiMode = "simple";
     initialized = true;
   }
 };

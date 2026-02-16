@@ -84,7 +84,7 @@ export const renderLayout = (options: LayoutOptions): string => {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="referrer" content="same-origin" />
     <title>${title}</title>
-    <link rel="stylesheet" href="/styles.css?v=18" />
+    <link rel="stylesheet" href="/styles.css?v=19" />
   </head>
   <body>
     <div class="bg-shape bg-shape-1"></div>
@@ -121,38 +121,32 @@ export const renderPageList = (pages: WikiPageSummary[]): string => {
     <section class="card-grid">
       ${pages
         .map(
-          (page) => `
+          (page) => {
+            const visibleTags = page.tags.slice(0, 2);
+            const hiddenTagCount = Math.max(0, page.tags.length - visibleTags.length);
+            return `
           <article class="card">
             <h3><a href="/wiki/${encodeURIComponent(page.slug)}">${escapeHtml(page.title)}</a></h3>
             <p class="card-excerpt">${escapeHtml(page.excerpt || "Keine Vorschau verfügbar.")}</p>
             <div class="card-meta">
               <span class="meta-pill">${formatDate(page.updatedAt)}</span>
               <span class="meta-pill">Kategorie: ${escapeHtml(page.categoryName)}</span>
-              <span class="meta-pill">Profil: ${
-                page.securityProfile === "confidential"
-                  ? "Vertraulich"
-                  : page.securityProfile === "sensitive"
-                    ? "Sensibel"
-                    : "Standard"
-              }</span>
-              <span class="meta-pill">${page.visibility === "restricted" ? "Zugriff: eingeschränkt" : "Zugriff: alle"}</span>
-              <span class="meta-pill">${page.encrypted ? "Verschlüsselt" : "Unverschlüsselt"}</span>
-              ${page.updatedBy && page.updatedBy !== "unknown" ? `<span class="meta-pill">von ${escapeHtml(page.updatedBy)}</span>` : ""}
             </div>
             ${
-              page.tags.length > 0
-                ? `<div class="card-tags">${page.tags
+              visibleTags.length > 0 || hiddenTagCount > 0
+                ? `<div class="card-tags">${visibleTags
                     .map(
                       (tag) =>
                         `<a class="tag-chip" href="/search?tag=${encodeURIComponent(tag)}" title="Nach Tag filtern: ${escapeHtml(tag)}">#${escapeHtml(
                           tag
                         )}</a>`
                     )
-                    .join("")}</div>`
+                    .join("")}${hiddenTagCount > 0 ? `<span class="tag-chip tag-chip-muted">+${hiddenTagCount}</span>` : ""}</div>`
                 : ""
             }
           </article>
         `
+          }
         )
         .join("\n")}
     </section>

@@ -265,6 +265,29 @@ a {
   gap: 0.75rem;
 }
 
+.dashboard-primary-actions {
+  justify-content: flex-end;
+}
+
+.dashboard-filter-row {
+  margin-top: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.dashboard-filter-row select {
+  width: auto;
+  min-width: 210px;
+  max-width: 300px;
+}
+
+.dashboard-reset-link {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
@@ -324,6 +347,45 @@ a {
 .dashboard-recent-item span {
   color: var(--muted);
   font-size: 0.86rem;
+}
+
+.dashboard-article-panel {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  padding: 0.25rem 0.65rem;
+}
+
+.dashboard-article-panel summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Times New Roman", serif;
+  font-size: 1.35rem;
+  font-weight: 700;
+  padding: 0.5rem 0.35rem 0.65rem;
+}
+
+.dashboard-article-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.dashboard-article-panel summary::after {
+  content: "▾";
+  color: var(--muted);
+  font-size: 1rem;
+  transition: transform 120ms ease;
+}
+
+.dashboard-article-panel[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.dashboard-article-panel > .stack {
+  padding: 0 0.1rem 0.3rem;
 }
 
 .toc-shell {
@@ -411,14 +473,15 @@ a {
 
 .card p {
   color: var(--muted);
-  min-height: 72px;
+  min-height: 0;
 }
 
 .card-excerpt {
+  margin: 0.35rem 0 0;
   overflow-wrap: anywhere;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 7;
+  -webkit-line-clamp: 4;
   overflow: hidden;
 }
 
@@ -460,6 +523,13 @@ a {
   color: #33535f;
   font-size: 0.8rem;
   text-decoration: none;
+}
+
+.tag-chip-muted {
+  color: var(--muted);
+  background: #fff;
+  border-color: var(--line);
+  cursor: default;
 }
 
 a.tag-chip:hover {
@@ -1331,6 +1401,14 @@ hr {
   .page-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .dashboard-primary-actions {
+    justify-content: flex-start;
+  }
+
+  .dashboard-article-panel summary {
+    font-size: 1.2rem;
   }
 
   .admin-nav {
