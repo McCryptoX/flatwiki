@@ -830,7 +830,7 @@ export const canUserAccessPage = (
     | Pick<WikiPageSummary, "visibility" | "allowedUsers" | "allowedGroups">,
   user: PublicUser | undefined
 ): boolean => {
-  if (!user) return false;
+  if (!user) return page.visibility === "all";
   if (user.role === "admin") return true;
   if (page.visibility === "all") return true;
   const username = user.username.toLowerCase();
@@ -916,7 +916,7 @@ export const filterAccessiblePageSummaries = async (
   summaries: WikiPageSummary[],
   user: PublicUser | undefined
 ): Promise<WikiPageSummary[]> => {
-  if (!user) return [];
+  if (!user) return summaries.filter((summary) => summary.visibility === "all");
   if (user.role === "admin") return summaries;
 
   const userWithGroups: PublicUser =

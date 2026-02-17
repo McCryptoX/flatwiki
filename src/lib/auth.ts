@@ -2,6 +2,7 @@ import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { config } from "../config.js";
 import { listGroupIdsForUser } from "./groupStore.js";
+import { getPublicReadEnabled } from "./runtimeSettingsStore.js";
 import { deleteSession, getSessionById } from "./sessionStore.js";
 import { findUserById, hasAnyUser } from "./userStore.js";
 
@@ -96,6 +97,21 @@ export const requireAuth = async (request: FastifyRequest, reply: FastifyReply):
     reply.redirect("/setup");
     return;
   }
+
+  const next = encodeURIComponent(request.raw.url ?? "/");
+  reply.redirect(`/login?next=${next}`);
+};
+
+export const requireAuthOrPublicRead = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+  if (request.currentUser) return;
+
+  const usersExist = await hasAnyUser();
+  if (!usersExist) {
+    reply.redirect("/setup");
+    return;
+  }
+
+  if (getPublicReadEnabled()) return;
 
   const next = encodeURIComponent(request.raw.url ?? "/");
   reply.redirect(`/login?next=${next}`);

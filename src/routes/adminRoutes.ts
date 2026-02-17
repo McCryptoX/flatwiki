@@ -58,7 +58,7 @@ import {
   validateUserInput
 } from "../lib/userStore.js";
 import { validatePasswordStrength } from "../lib/password.js";
-import { getRuntimeSettings, getUiMode, setIndexBackend, setUiMode, type UiMode } from "../lib/runtimeSettingsStore.js";
+import { getRuntimeSettings, getUiMode, setIndexBackend, setPublicRead, setUiMode, type UiMode } from "../lib/runtimeSettingsStore.js";
 import { deleteUserSessions } from "../lib/sessionStore.js";
 import { convertWikitextToMarkdown } from "../lib/wikitextImport.js";
 import { listBrokenInternalLinks, listPages, savePage, slugifyTitle } from "../lib/wikiStore.js";
@@ -1160,15 +1160,18 @@ const renderSslManagement = (inspection: SslStatusInspection): string => {
 
 const renderUiModeManagement = (
   csrfToken: string,
-  currentUiMode: UiMode
+  currentUiMode: UiMode,
+  publicReadEnabled: boolean
 ): string => `
   <section class="content-wrap stack">
     <div class="admin-index-panel stack">
-      <h2>Betriebsmodus</h2>
+      <h2>Betriebsmodus & Lesezugriff</h2>
       <p class="muted-note">
         <strong>Einfach:</strong> reduzierte Admin-Oberfläche für Alltagseinsatz.
         <br />
         <strong>Erweitert:</strong> alle technischen Bereiche sichtbar (Backups, Versionen, Link-Check, Suchindex, TLS/SSL).
+        <br />
+        <strong>Öffentlich lesen:</strong> Gäste dürfen Artikel lesen und suchen. Schreiben/Bearbeiten bleibt nur mit Login.
       </p>
       <form method="post" action="/admin/ui" class="stack">
         <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}" />
@@ -1178,8 +1181,14 @@ const renderUiModeManagement = (
             <option value="advanced" ${currentUiMode === "advanced" ? "selected" : ""}>Erweitert</option>
           </select>
         </label>
+        <label>Öffentlicher Lesezugriff
+          <select name="publicRead">
+            <option value="0" ${!publicReadEnabled ? "selected" : ""}>Aus (Login für alles)</option>
+            <option value="1" ${publicReadEnabled ? "selected" : ""}>An (Lesen ohne Login)</option>
+          </select>
+        </label>
         <div class="action-row">
-          <button type="submit">Modus speichern</button>
+          <button type="submit">Einstellungen speichern</button>
         </div>
       </form>
     </div>
@@ -1275,6 +1284,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
 
   app.get("/admin/ui", { preHandler: [requireAdmin] }, async (request, reply) => {
     const query = asRecord(request.query);
+    const runtimeSettings = await getRuntimeSettings();
     const currentUiMode = getUiMode();
 
     const body = `
@@ -1283,7 +1293,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
         description: "Wähle, wie umfangreich die Admin-Oberfläche angezeigt wird.",
         active: "ui"
       })}
-      ${renderUiModeManagement(request.csrfToken ?? "", currentUiMode)}
+      ${renderUiModeManagement(request.csrfToken ?? "", currentUiMode, runtimeSettings.publicRead)}
     `;
 
     return reply.type("text/html").send(
@@ -1304,23 +1314,39 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
       return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
     }
 
-    const result = await setUiMode({
+    const modeResult = await setUiMode({
       mode: body.mode ?? "",
       ...(request.currentUser?.username ? { updatedBy: request.currentUser.username } : {})
     });
-    if (!result.ok) {
-      return reply.redirect(`/admin/ui?error=${encodeURIComponent(result.error ?? "Bedienmodus konnte nicht gespeichert werden.")}`);
+    if (!modeResult.ok) {
+      return reply.redirect(`/admin/ui?error=${encodeURIComponent(modeResult.error ?? "Bedienmodus konnte nicht gespeichert werden.")}`);
+    }
+
+    const publicReadResult = await setPublicRead({
+      enabled: body.publicRead ?? "0",
+      ...(request.currentUser?.username ? { updatedBy: request.currentUser.username } : {})
+    });
+    if (!publicReadResult.ok) {
+      return reply.redirect(`/admin/ui?error=${encodeURIComponent(publicReadResult.error ?? "Öffentlicher Lesezugriff konnte nicht gespeichert werden.")}`);
     }
 
     await writeAuditLog({
       action: "admin_ui_mode_changed",
       actorId: request.currentUser?.id,
       details: {
-        mode: result.uiMode
+        mode: modeResult.uiMode,
+        publicRead: publicReadResult.publicRead
       }
     });
 
-    const notice = result.changed ? `Bedienmodus gespeichert: ${result.uiMode === "simple" ? "Einfach" : "Erweitert"}.` : "Bedienmodus unverändert.";
+    const changedParts: string[] = [];
+    if (modeResult.changed) {
+      changedParts.push(`Modus: ${modeResult.uiMode === "simple" ? "Einfach" : "Erweitert"}`);
+    }
+    if (publicReadResult.changed) {
+      changedParts.push(`Öffentlich lesen: ${publicReadResult.publicRead ? "An" : "Aus"}`);
+    }
+    const notice = changedParts.length > 0 ? `Gespeichert (${changedParts.join(", ")}).` : "Einstellungen unverändert.";
     return reply.redirect(`/admin/ui?notice=${encodeURIComponent(notice)}`);
   });
 

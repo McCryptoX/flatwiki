@@ -14,6 +14,9 @@ FlatWiki ist ein modernes, durchsuchbares Flat-File-Wiki mit Login, Rollen, Admi
 - Flat-File-Wiki (Markdown bleibt Quelle der Wahrheit)
 - Wiki-Seiten als Markdown (`data/wiki/*.md`)
 - Login/Logout
+- Optionaler öffentlicher Lesemodus (Admin-Schalter unter `/admin/ui`)
+  - Gäste können lesen + suchen ohne Login
+  - Schreiben/Bearbeiten/Löschen bleibt nur für angemeldete Nutzer
 - Admin-Bereich für Benutzerverwaltung
   - Benutzer anlegen, bearbeiten, deaktivieren, löschen
   - Rollen (`admin`, `user`)

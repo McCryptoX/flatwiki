@@ -1,4 +1,5 @@
 import { config } from "../config.js";
+import { getPublicReadEnabled } from "./runtimeSettingsStore.js";
 import type { PublicUser, WikiPageSummary } from "../types.js";
 
 const siteTitle = config.wikiTitle;
@@ -35,6 +36,7 @@ interface LayoutOptions {
 export const renderLayout = (options: LayoutOptions): string => {
   const title = `${escapeHtml(options.title)} | ${escapeHtml(siteTitle)}`;
   const user = options.user;
+  const publicReadEnabled = getPublicReadEnabled();
 
   const navRight = user
     ? `
@@ -55,7 +57,7 @@ export const renderLayout = (options: LayoutOptions): string => {
     `
     : `<a href="/login">Anmelden</a>`;
 
-  const search = user
+  const search = user || publicReadEnabled
     ? `
       <form method="get" action="/search" class="search-form">
         <div class="search-box" data-search-suggest>
@@ -72,7 +74,7 @@ export const renderLayout = (options: LayoutOptions): string => {
     options.error ? `<div class="flash error">${escapeHtml(options.error)}</div>` : ""
   ].join("\n");
 
-  const scripts = [...(user ? ["/search-suggest.js?v=2"] : []), ...(options.scripts ?? [])]
+  const scripts = [...(user || publicReadEnabled ? ["/search-suggest.js?v=2"] : []), ...(options.scripts ?? [])]
     .filter((scriptPath) => scriptPath.startsWith("/"))
     .map((scriptPath) => `<script src="${escapeHtml(scriptPath)}" defer></script>`)
     .join("\n");

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
-import { requireAdmin, requireAuth, verifySessionCsrfToken } from "../lib/auth.js";
+import { requireAdmin, requireAuth, requireAuthOrPublicRead, verifySessionCsrfToken } from "../lib/auth.js";
 import { writeAuditLog } from "../lib/audit.js";
 import { findCategoryById, getDefaultCategory, listCategories } from "../lib/categoryStore.js";
 import { listGroups } from "../lib/groupStore.js";
@@ -820,7 +820,7 @@ const buildEditorRedirectQuery = (params: {
 };
 
 export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> => {
-  app.get("/", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.get("/", { preHandler: [requireAuthOrPublicRead] }, async (request, reply) => {
     const query = asObject(request.query);
     const selectedCategoryId = readSingle(query.category);
     const categoryFilter = selectedCategoryId ? { categoryId: selectedCategoryId } : undefined;
@@ -837,6 +837,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     const recentPages = pages.slice(0, 5);
     const showArticleListOpen = paged.page > 1 || selectedCategoryId.length > 0;
 
+    const canWrite = Boolean(request.currentUser);
     const body = `
       <section class="dashboard-shell stack large">
         <section class="page-header">
@@ -846,39 +847,45 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
             ${renderDashboardCategoryFilter(categories, selectedCategoryId)}
           </div>
           <div class="action-row dashboard-primary-actions">
-            <a class="button" href="/new">Neue Seite</a>
+            ${canWrite ? '<a class="button" href="/new">Neue Seite</a>' : '<a class="button secondary" href="/login">Anmelden zum Schreiben</a>'}
           </div>
         </section>
 
-        <section class="content-wrap stack">
-          <h2>Schnellstart</h2>
-          <div class="dashboard-quick-grid">
-            ${
-              quickTemplates.length > 0
-                ? quickTemplates
-                    .map(
-                      (template) => `
-                        <a class="dashboard-tile" href="/new?template=${encodeURIComponent(template.id)}">
-                          <strong>${escapeHtml(template.name)}</strong>
-                          <span>${escapeHtml(template.description || "Direkt mit Vorlage starten.")}</span>
-                        </a>
+        ${
+          canWrite
+            ? `
+              <section class="content-wrap stack">
+                <h2>Schnellstart</h2>
+                <div class="dashboard-quick-grid">
+                  ${
+                    quickTemplates.length > 0
+                      ? quickTemplates
+                          .map(
+                            (template) => `
+                              <a class="dashboard-tile" href="/new?template=${encodeURIComponent(template.id)}">
+                                <strong>${escapeHtml(template.name)}</strong>
+                                <span>${escapeHtml(template.description || "Direkt mit Vorlage starten.")}</span>
+                              </a>
+                            `
+                          )
+                          .join("")
+                      : `
+                        <a class="dashboard-tile" href="/new?template=idea"><strong>Idee</strong><span>Neue Ideen festhalten.</span></a>
+                        <a class="dashboard-tile" href="/new?template=documentation"><strong>Dokumentation</strong><span>Anleitungen und Wissen strukturieren.</span></a>
+                        <a class="dashboard-tile" href="/new?template=travel"><strong>Reisebericht</strong><span>Erlebnisse und Bilder sammeln.</span></a>
+                        <a class="dashboard-tile" href="/new?template=finance"><strong>Finanznotiz</strong><span>Kritische Inhalte geschützt erfassen.</span></a>
                       `
-                    )
-                    .join("")
-                : `
-                  <a class="dashboard-tile" href="/new?template=idea"><strong>Idee</strong><span>Neue Ideen festhalten.</span></a>
-                  <a class="dashboard-tile" href="/new?template=documentation"><strong>Dokumentation</strong><span>Anleitungen und Wissen strukturieren.</span></a>
-                  <a class="dashboard-tile" href="/new?template=travel"><strong>Reisebericht</strong><span>Erlebnisse und Bilder sammeln.</span></a>
-                  <a class="dashboard-tile" href="/new?template=finance"><strong>Finanznotiz</strong><span>Kritische Inhalte geschützt erfassen.</span></a>
-                `
-            }
-            <a class="dashboard-tile dashboard-tile-ghost" href="/new?template=blank">
-              <strong>Leer starten</strong>
-              <span>Freie Seite ohne Vorlage.</span>
-            </a>
-          </div>
-          <p class="muted-note small">Vollständige Übersicht im <a href="/toc">Inhaltsverzeichnis</a>.</p>
-        </section>
+                  }
+                  <a class="dashboard-tile dashboard-tile-ghost" href="/new?template=blank">
+                    <strong>Leer starten</strong>
+                    <span>Freie Seite ohne Vorlage.</span>
+                  </a>
+                </div>
+                <p class="muted-note small">Vollständige Übersicht im <a href="/toc">Inhaltsverzeichnis</a>.</p>
+              </section>
+            `
+            : ""
+        }
 
         <section class="content-wrap stack">
           <h2>Zuletzt bearbeitet</h2>
@@ -911,7 +918,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     );
   });
 
-  app.get("/toc", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.get("/toc", { preHandler: [requireAuthOrPublicRead] }, async (request, reply) => {
     const query = asObject(request.query);
     const selectedCategoryId = readSingle(query.category);
     const categoryFilter = selectedCategoryId ? { categoryId: selectedCategoryId } : undefined;
@@ -921,6 +928,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     const groupedPages = groupPagesByInitial(paged.slice);
     const categories = await listCategories();
 
+    const canWrite = Boolean(request.currentUser);
     const body = `
       <section class="content-wrap toc-shell">
         <div class="page-header">
@@ -932,7 +940,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
               category: selectedCategoryId
             })}
           </div>
-          <a class="button" href="/new">Neue Seite</a>
+          ${canWrite ? '<a class="button" href="/new">Neue Seite</a>' : ""}
         </div>
         <nav class="toc-index" aria-label="Alphabetischer Index">
           ${groupedPages.map((group) => `<a href="#toc-${escapeHtml(group.key)}">${escapeHtml(group.key)}</a>`).join("")}
@@ -973,7 +981,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     );
   });
 
-  app.get("/wiki/:slug", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.get("/wiki/:slug", { preHandler: [requireAuthOrPublicRead] }, async (request, reply) => {
     const params = request.params as { slug: string };
     const page = await getPage(params.slug);
 
@@ -1037,7 +1045,11 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
             }
             <p class="meta">Zuletzt geändert: ${escapeHtml(page.updatedAt)} | von ${escapeHtml(page.updatedBy)}</p>
             <div class="actions">
-              <a class="button secondary" href="/wiki/${encodeURIComponent(page.slug)}/edit">Bearbeiten</a>
+              ${
+                request.currentUser
+                  ? `<a class="button secondary" href="/wiki/${encodeURIComponent(page.slug)}/edit">Bearbeiten</a>`
+                  : ""
+              }
               <a class="button secondary" href="/wiki/${encodeURIComponent(page.slug)}/history">Historie</a>
               ${
                 request.currentUser?.role === "admin"
@@ -1656,7 +1668,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     return reply.redirect(`/wiki/${encodeURIComponent(params.slug)}`);
   });
 
-  app.get("/wiki/:slug/history", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.get("/wiki/:slug/history", { preHandler: [requireAuthOrPublicRead] }, async (request, reply) => {
     const params = request.params as { slug: string };
     const normalizedSlug = params.slug.trim().toLowerCase();
     const page = await getPage(normalizedSlug);
@@ -1783,7 +1795,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     );
   });
 
-  app.get("/wiki/:slug/history/:versionId", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.get("/wiki/:slug/history/:versionId", { preHandler: [requireAuthOrPublicRead] }, async (request, reply) => {
     const params = request.params as { slug: string; versionId: string };
     const normalizedSlug = params.slug.trim().toLowerCase();
     const page = await getPage(normalizedSlug);
@@ -1891,7 +1903,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     );
   });
 
-  app.get("/wiki/:slug/history/:versionId/diff", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.get("/wiki/:slug/history/:versionId/diff", { preHandler: [requireAuthOrPublicRead] }, async (request, reply) => {
     const params = request.params as { slug: string; versionId: string };
     const query = asObject(request.query);
     const normalizedSlug = params.slug.trim().toLowerCase();
@@ -2175,7 +2187,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     return reply.redirect(`/?notice=${encodeURIComponent(notice)}`);
   });
 
-  app.get("/search", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.get("/search", { preHandler: [requireAuthOrPublicRead] }, async (request, reply) => {
     const query = asObject(request.query);
     const q = readSingle(query.q).trim();
     const activeTag = normalizeTagFilter(readSingle(query.tag));
@@ -2368,7 +2380,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     );
   });
 
-  app.get("/api/search/suggest", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.get("/api/search/suggest", { preHandler: [requireAuthOrPublicRead] }, async (request, reply) => {
     const query = asObject(request.query);
     const q = readSingle(query.q).trim();
     const requestedLimit = Number.parseInt(readSingle(query.limit) || "8", 10);
