@@ -62,6 +62,19 @@ const fallbackAltFromFileName = (fileName: string): string => {
 
 const escapeTableCell = (value: string): string => value.replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
 
+const stripWikiAttributesPrefix = (value: string): string => {
+  const trimmed = value.trim();
+  const pipeIndex = trimmed.indexOf("|");
+  if (pipeIndex < 0) return trimmed;
+
+  const prefix = trimmed.slice(0, pipeIndex).trim();
+  if (/^(?:class|style|align|valign|width|rowspan|colspan|scope)\b/i.test(prefix) || prefix.includes("=")) {
+    return trimmed.slice(pipeIndex + 1).trim();
+  }
+
+  return trimmed;
+};
+
 const parseSyntaxLang = (startTag: string): string => {
   const attrMatch = startTag.match(/<syntaxhighlight\b([^>]*)>/i);
   const attrs = attrMatch?.[1] ?? "";
@@ -80,6 +93,9 @@ const normalizeInlineWikitext = (
   warnings: string[]
 ): string => {
   let value = input;
+
+  value = value.replace(/<span\b[^>]*>([\s\S]*?)<\/span>/gi, "$1");
+  value = value.replace(/<\/?span\b[^>]*>/gi, "");
 
   value = value.replace(/<code>([\s\S]*?)<\/code>/gi, (_full, body: string) => {
     const normalizedBody = String(body ?? "").replace(/`+/g, "'").trim();
@@ -228,7 +244,8 @@ const convertTableBlock = (blockLines: string[], stats: WikitextImportStats, war
     if (!line) continue;
 
     if (line.startsWith("|+")) {
-      caption = normalizeInlineWikitext(line.slice(2).trim(), stats, warnings);
+      const rawCaption = stripWikiAttributesPrefix(line.slice(2).trim());
+      caption = normalizeInlineWikitext(rawCaption, stats, warnings);
       continue;
     }
 
@@ -450,6 +467,7 @@ export const convertWikitextToMarkdown = (source: string): WikitextConversionRes
 
   const convertedLines: string[] = [];
   let inCodeFence = false;
+  let inCollapsibleWrapper = false;
 
   for (const rawLine of withTables) {
     const line = rawLine ?? "";
@@ -462,6 +480,24 @@ export const convertWikitextToMarkdown = (source: string): WikitextConversionRes
 
     if (inCodeFence) {
       convertedLines.push(line);
+      continue;
+    }
+
+    if (/^\s*<ul\b[^>]*\bmw-collapsible\b[^>]*>\s*$/i.test(line)) {
+      inCollapsibleWrapper = true;
+      continue;
+    }
+
+    if (inCollapsibleWrapper && /^\s*<li>\s*$/i.test(line)) {
+      continue;
+    }
+
+    if (inCollapsibleWrapper && /^\s*<\/li>\s*$/i.test(line)) {
+      continue;
+    }
+
+    if (inCollapsibleWrapper && /^\s*<\/ul>\s*$/i.test(line)) {
+      inCollapsibleWrapper = false;
       continue;
     }
 
