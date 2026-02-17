@@ -121,6 +121,16 @@ const cleanTextExcerpt = (markdown: string): string => {
   return markdown
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/`[^`]*`/g, " ")
+    // Markdown-Bilder nicht als Dateipfad im Teaser anzeigen.
+    .replace(/!\[[^\]]*]\([^)]+\)/g, " ")
+    // Markdown-Links: Linktext behalten, URL entfernen.
+    .replace(/\[([^\]]+)]\((?:[^()\\]|\\.)*\)/g, "$1")
+    // Auto-Links und rohe URLs/Pfade unterdrücken.
+    .replace(/<https?:\/\/[^>]+>/g, " ")
+    .replace(/https?:\/\/[^\s)]+/g, " ")
+    .replace(/\/uploads\/[^\s)]+/g, " ")
+    // HTML-Reste entfernen.
+    .replace(/<[^>]+>/g, " ")
     .replace(/[#>*_[\]()-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
