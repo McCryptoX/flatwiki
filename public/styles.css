@@ -1186,6 +1186,10 @@ th {
   position: sticky;
   top: 90px;
   align-self: start;
+  max-height: calc(100dvh - 112px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 0.85rem;
@@ -1207,6 +1211,7 @@ th {
 
 .article-toc li {
   line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 
 .article-toc li.depth-3 {
@@ -1461,5 +1466,7 @@ hr {
 
   .article-toc {
     position: static;
+    max-height: none;
+    overflow: visible;
   }
 }
