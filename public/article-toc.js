@@ -29,6 +29,29 @@
   let activeId = "";
   let frameHandle = 0;
   const topOffset = 150;
+  const scrollMargin = 8;
+
+  const canScrollWithinToc = () => {
+    const computed = window.getComputedStyle(tocRoot);
+    if (!["auto", "scroll", "overlay"].includes(computed.overflowY)) return false;
+    return tocRoot.scrollHeight > tocRoot.clientHeight + 1;
+  };
+
+  const keepActiveLinkVisible = (link) => {
+    if (!canScrollWithinToc()) return;
+
+    const tocRect = tocRoot.getBoundingClientRect();
+    const linkRect = link.getBoundingClientRect();
+
+    if (linkRect.top < tocRect.top + scrollMargin) {
+      tocRoot.scrollTop += linkRect.top - tocRect.top - scrollMargin;
+      return;
+    }
+
+    if (linkRect.bottom > tocRect.bottom - scrollMargin) {
+      tocRoot.scrollTop += linkRect.bottom - tocRect.bottom + scrollMargin;
+    }
+  };
 
   const setActive = (id) => {
     if (!id || id === activeId) return;
@@ -39,7 +62,7 @@
       entry.link.classList.toggle("is-active", isActive);
       if (isActive) {
         entry.link.setAttribute("aria-current", "location");
-        entry.link.scrollIntoView({ block: "nearest", inline: "nearest" });
+        keepActiveLinkVisible(entry.link);
       } else {
         entry.link.removeAttribute("aria-current");
       }
