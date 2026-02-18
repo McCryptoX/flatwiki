@@ -1040,7 +1040,9 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
                 ? '<p class="muted-note">Sensibler Modus aktiv. Keine PIN/TAN, vollständige Kartendaten oder Geheimnisse im Klartext speichern.</p>'
                 : ""
             }
-            <p class="meta">Zuletzt geändert: ${escapeHtml(page.updatedAt)} | von ${escapeHtml(page.updatedBy)}</p>
+            <p class="meta">Zuletzt geändert: <time datetime="${escapeHtml(page.updatedAt)}">${escapeHtml(
+              formatDate(page.updatedAt)
+            )}</time> | von ${escapeHtml(page.updatedBy)}</p>
             <div class="actions">
               ${
                 request.currentUser
