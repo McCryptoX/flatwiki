@@ -198,7 +198,7 @@ a {
 }
 
 .container {
-  width: min(1080px, 92vw);
+  width: min(1320px, 94vw);
   margin: 2.2rem auto 3.2rem;
   animation: rise 280ms ease-out;
 }
@@ -269,6 +269,10 @@ a {
   justify-content: flex-end;
 }
 
+.dashboard-toc-button {
+  font-weight: 700;
+}
+
 .dashboard-filter-row {
   margin-top: 0.25rem;
   display: flex;
@@ -329,6 +333,10 @@ a {
   background: #fff;
 }
 
+.dashboard-link-actions {
+  margin-top: 0.35rem;
+}
+
 .dashboard-recent-list {
   display: grid;
   gap: 0.45rem;
@@ -349,42 +357,42 @@ a {
   font-size: 0.86rem;
 }
 
-.dashboard-article-panel {
+.dashboard-activity-panel {
   border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #fff;
-  padding: 0.25rem 0.65rem;
+  border-radius: 12px;
+  background: #f8fbfd;
+  padding: 0.2rem 0.55rem;
 }
 
-.dashboard-article-panel summary {
+.dashboard-activity-panel summary {
   list-style: none;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Times New Roman", serif;
-  font-size: 1.35rem;
-  font-weight: 700;
-  padding: 0.5rem 0.35rem 0.65rem;
+  gap: 0.6rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 0.4rem 0.3rem 0.45rem;
 }
 
-.dashboard-article-panel summary::-webkit-details-marker {
+.dashboard-activity-panel summary::-webkit-details-marker {
   display: none;
 }
 
-.dashboard-article-panel summary::after {
-  content: "▾";
+.dashboard-activity-panel summary::after {
+  content: "▸";
   color: var(--muted);
-  font-size: 1rem;
+  font-size: 0.95rem;
   transition: transform 120ms ease;
 }
 
-.dashboard-article-panel[open] summary::after {
-  transform: rotate(180deg);
+.dashboard-activity-panel[open] summary::after {
+  transform: rotate(90deg);
 }
 
-.dashboard-article-panel > .stack {
+.dashboard-activity-panel > .stack {
   padding: 0 0.1rem 0.3rem;
 }
 
@@ -1193,9 +1201,9 @@ th {
 
 .article-layout {
   display: grid;
-  grid-template-columns: minmax(210px, 260px) minmax(0, 1fr);
+  grid-template-columns: minmax(180px, 230px) minmax(0, 1fr);
   align-items: start;
-  gap: 1.1rem;
+  gap: 1.4rem;
 }
 
 .article-main {
@@ -1329,10 +1337,20 @@ th {
   padding: 0.9rem;
   overflow: auto;
   border-radius: 10px;
+  line-height: 1.45;
 }
 
 .wiki-content code {
   font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.wiki-content pre > code.language-bash,
+.wiki-content pre > code.language-sh,
+.wiki-content pre > code.language-shell,
+.wiki-content pre > code.language-console {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .wiki-content img {
@@ -1459,8 +1477,8 @@ hr {
     justify-content: flex-start;
   }
 
-  .dashboard-article-panel summary {
-    font-size: 1.2rem;
+  .dashboard-activity-panel summary {
+    font-size: 0.92rem;
   }
 
   .admin-nav {

@@ -101,6 +101,9 @@ const normalizeIds = (values: string[]): string[] => {
 const sortPagesByTitle = <T extends { title: string }>(pages: T[]): T[] =>
   pages.sort((a, b) => a.title.localeCompare(b.title, "de", { sensitivity: "base" }));
 
+const sortPagesByUpdatedAtDesc = <T extends { updatedAt: string }>(pages: T[]): T[] =>
+  pages.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
 const groupPagesByInitial = (
   pages: Awaited<ReturnType<typeof listPagesForUser>>
 ): Array<{ key: string; pages: typeof pages }> => {
@@ -826,16 +829,14 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     const categoryFilter = selectedCategoryId ? { categoryId: selectedCategoryId } : undefined;
     const pages = await listPagesForUser(request.currentUser, categoryFilter);
     const templates = await listTemplates({ includeDisabled: false });
-    const pageNumber = parsePageNumber(readSingle(query.page));
-    const paged = paginate(pages, pageNumber, 24);
     const categories = await listCategories();
     const quickTemplateIds = ["idea", "documentation", "travel", "finance"];
     const templateMap = new Map(templates.map((template) => [template.id, template]));
     const quickTemplates = quickTemplateIds
       .map((id) => templateMap.get(id))
       .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
-    const recentPages = pages.slice(0, 5);
-    const showArticleListOpen = paged.page > 1 || selectedCategoryId.length > 0;
+    const recentPages = sortPagesByUpdatedAtDesc([...pages]).slice(0, 4);
+    const showRecentOpen = selectedCategoryId.length > 0;
 
     const canWrite = Boolean(request.currentUser);
     const body = `
@@ -847,7 +848,8 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
             ${renderDashboardCategoryFilter(categories, selectedCategoryId)}
           </div>
           <div class="action-row dashboard-primary-actions">
-            ${canWrite ? '<a class="button" href="/new">Neue Seite</a>' : '<a class="button secondary" href="/login">Anmelden zum Schreiben</a>'}
+            <a class="button dashboard-toc-button" href="/toc">Inhaltsverzeichnis</a>
+            ${canWrite ? '<a class="button secondary" href="/new">Neue Seite</a>' : '<a class="button secondary" href="/login">Anmelden zum Schreiben</a>'}
           </div>
         </section>
 
@@ -881,25 +883,19 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
                     <span>Freie Seite ohne Vorlage.</span>
                   </a>
                 </div>
-                <p class="muted-note small">Vollständige Übersicht im <a href="/toc">Inhaltsverzeichnis</a>.</p>
+                <div class="action-row dashboard-link-actions">
+                  <a class="button secondary" href="/toc">Vollständige Übersicht öffnen</a>
+                </div>
               </section>
             `
             : ""
         }
 
         <section class="content-wrap stack">
-          <h2>Zuletzt bearbeitet</h2>
-          ${renderRecentPages(recentPages)}
-        </section>
-
-        <section class="content-wrap stack">
-          <details class="dashboard-article-panel" ${showArticleListOpen ? "open" : ""}>
-            <summary>Alle Artikel (${pages.length})</summary>
+          <details class="dashboard-activity-panel" ${showRecentOpen ? "open" : ""}>
+            <summary>Letzte Änderungen (${recentPages.length})</summary>
             <div class="stack">
-              ${renderPageList(paged.slice)}
-              ${renderPager("/", paged.page, paged.totalPages, {
-                category: selectedCategoryId
-              })}
+              ${renderRecentPages(recentPages)}
             </div>
           </details>
         </section>
@@ -923,8 +919,9 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     const selectedCategoryId = readSingle(query.category);
     const categoryFilter = selectedCategoryId ? { categoryId: selectedCategoryId } : undefined;
     const pages = await listPagesForUser(request.currentUser, categoryFilter);
+    const pagesByTitle = sortPagesByTitle([...pages]);
     const pageNumber = parsePageNumber(readSingle(query.page));
-    const paged = paginate(pages, pageNumber, 90);
+    const paged = paginate(pagesByTitle, pageNumber, 90);
     const groupedPages = groupPagesByInitial(paged.slice);
     const categories = await listCategories();
 
