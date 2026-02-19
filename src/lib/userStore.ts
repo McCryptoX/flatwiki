@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { config } from "../config.js";
 import type { PublicUser, Role, UserRecord } from "../types.js";
 import { ensureFile, readJsonFile, writeJsonFile } from "./fileStore.js";
-import { hashPassword, verifyPassword } from "./password.js";
+import { hashPassword, needsRehash, verifyPassword } from "./password.js";
 
 const USERNAME_PATTERN = /^[a-z0-9._-]{3,32}$/;
 
@@ -215,6 +215,12 @@ export const verifyUserCredentials = async (
   const valid = await verifyPassword(password, user.passwordHash);
   if (!valid) {
     return { error: "Ungültige Zugangsdaten." };
+  }
+
+  if (needsRehash(user.passwordHash)) {
+    user.passwordHash = await hashPassword(password);
+    user.updatedAt = new Date().toISOString();
+    await saveUsers(users);
   }
 
   return { user: toPublicUser(user) };

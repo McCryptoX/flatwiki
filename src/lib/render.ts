@@ -116,6 +116,7 @@ export const renderLayout = (options: LayoutOptions): string => {
       <a href="/privacy">Datenschutz</a>
       <a href="/impressum">Impressum</a>
     </footer>
+    <script src="/utils.js?v=1"></script>
     ${scripts}
   </body>
 </html>`;

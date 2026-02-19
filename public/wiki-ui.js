@@ -279,13 +279,25 @@
 
         const data = await response.json();
         if (!response.ok || !data.ok) {
-          previewPanel.innerHTML = `<p class="muted-note">${data.error || "Vorschau konnte nicht geladen werden."}</p>`;
+          previewPanel.textContent = "";
+          const msg = document.createElement("p");
+          msg.className = "muted-note";
+          msg.textContent = data.error || "Vorschau konnte nicht geladen werden.";
+          previewPanel.append(msg);
           return;
         }
 
-        previewPanel.innerHTML = `<article class="wiki-content">${String(data.html || "")}</article>`;
+        const wrapper = document.createElement("article");
+        wrapper.className = "wiki-content";
+        wrapper.innerHTML = String(data.html || "");
+        previewPanel.textContent = "";
+        previewPanel.append(wrapper);
       } catch (_error) {
-        previewPanel.innerHTML = '<p class="muted-note">Vorschau konnte nicht geladen werden.</p>';
+        previewPanel.textContent = "";
+        const msg = document.createElement("p");
+        msg.className = "muted-note";
+        msg.textContent = "Vorschau konnte nicht geladen werden.";
+        previewPanel.append(msg);
       }
     };
 

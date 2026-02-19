@@ -196,5 +196,9 @@ if (installerResult.created) {
 }
 
 if (config.cookieSecret === "dev-only-change-cookie-secret-please") {
+  if (config.isProduction) {
+    console.error("[FATAL] COOKIE_SECRET nicht gesetzt. In Produktion zwingend erforderlich.");
+    process.exit(1);
+  }
   console.warn("[WARN] COOKIE_SECRET nicht gesetzt. Bitte in Produktion zwingend setzen.");
 }

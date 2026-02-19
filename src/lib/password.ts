@@ -69,6 +69,17 @@ export const verifyPassword = async (password: string, encodedHash: string): Pro
   return timingSafeEqual(actualHash, expectedHash);
 };
 
+export const needsRehash = (encodedHash: string): boolean => {
+  const [algorithm, nRaw, rRaw, pRaw] = encodedHash.split("$");
+  if (algorithm !== "scrypt") return true;
+
+  const n = Number.parseInt(nRaw ?? "", 10);
+  const r = Number.parseInt(rRaw ?? "", 10);
+  const p = Number.parseInt(pRaw ?? "", 10);
+
+  return n !== SCRYPT_N || r !== SCRYPT_R || p !== SCRYPT_P;
+};
+
 export const validatePasswordStrength = (password: string): string | null => {
   if (password.length < 12) {
     return "Passwort muss mindestens 12 Zeichen lang sein.";

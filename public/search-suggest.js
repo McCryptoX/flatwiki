@@ -1,13 +1,7 @@
 (() => {
   "use strict";
 
-  const onReady = (callback) => {
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", callback, { once: true });
-      return;
-    }
-    callback();
-  };
+  const { onReady } = window.FW;
 
   const clearSuggestions = (panel) => {
     panel.innerHTML = "";
@@ -87,7 +81,10 @@
 
           const data = await response.json();
           renderSuggestions(panel, data.suggestions);
-        } catch (_error) {
+        } catch (error) {
+          if (error.name !== "AbortError") {
+            console.warn("Search suggestions failed:", error);
+          }
           clearSuggestions(panel);
         }
       };

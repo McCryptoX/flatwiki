@@ -164,7 +164,7 @@ export const registerAccountRoutes = async (app: FastifyInstance): Promise<void>
     );
   });
 
-  app.post("/account/password", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/account/password", { preHandler: [requireAuth], config: { rateLimit: { max: 5, timeWindow: "1 minute" } } }, async (request, reply) => {
     const user = request.currentUser;
     if (!user) {
       return reply.redirect("/login");

@@ -74,6 +74,13 @@ export const attachCurrentUser = async (request: FastifyRequest, reply: FastifyR
     return;
   }
 
+  const currentIp = request.ip;
+  if (session.ip && session.ip !== currentIp) {
+    await deleteSession(sessionId);
+    clearSessionCookie(reply);
+    return;
+  }
+
   const user = await findUserById(session.userId);
   if (!user || user.disabled) {
     await deleteSession(sessionId);
@@ -135,6 +142,7 @@ export const requireAdmin = async (request: FastifyRequest, reply: FastifyReply)
 
   if (request.currentUser.role !== "admin") {
     reply.code(403).type("text/plain").send("Nur Admins haben Zugriff.");
+    return;
   }
 };
 

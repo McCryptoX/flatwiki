@@ -1,13 +1,7 @@
 (() => {
   "use strict";
 
-  const onReady = (callback) => {
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", callback, { once: true });
-      return;
-    }
-    callback();
-  };
+  const { onReady } = window.FW;
 
   const hasActiveAdvancedFilters = (root) => {
     const fields = root.querySelectorAll(

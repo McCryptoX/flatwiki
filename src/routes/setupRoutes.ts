@@ -63,7 +63,7 @@ export const registerSetupRoutes = async (app: FastifyInstance): Promise<void> =
     );
   });
 
-  app.post("/setup", async (request, reply) => {
+  app.post("/setup", { config: { rateLimit: { max: 5, timeWindow: "1 minute" } } }, async (request, reply) => {
     const usersExist = await hasAnyUser();
     if (usersExist) {
       return reply.redirect(request.currentUser ? "/" : "/login");

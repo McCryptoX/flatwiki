@@ -148,7 +148,7 @@ const start = async (): Promise<void> => {
 
     await purgeExpiredSessions();
     setInterval(() => {
-      void purgeExpiredSessions();
+      void purgeExpiredSessions().catch((error) => app.log.error(error, "Fehler beim Bereinigen abgelaufener Sessions"));
     }, 10 * 60 * 1000).unref();
 
     await registerRoutes();

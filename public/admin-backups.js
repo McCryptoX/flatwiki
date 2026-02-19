@@ -38,23 +38,7 @@
   let backupRunning = false;
   let restoreRunning = false;
 
-  const escapeHtml = (value) =>
-    String(value)
-      .replaceAll("&", "&amp;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("'", "&#39;");
-
-  const formatDate = (value) => {
-    if (!value) return "-";
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "-";
-    return new Intl.DateTimeFormat("de-DE", {
-      dateStyle: "medium",
-      timeStyle: "short"
-    }).format(date);
-  };
+  const { escapeHtml, formatDate } = window.FW;
 
   const formatSize = (sizeBytes) => {
     const bytes = Number(sizeBytes || 0);
@@ -195,7 +179,7 @@
             <td>
               <div class="action-row">
                 <a class="button tiny secondary" href="/admin/backups/download/${encodedName}">Download</a>
-                <form method="post" action="/admin/backups/delete" onsubmit="return confirm('Backup-Datei wirklich löschen?')">
+                <form method="post" action="/admin/backups/delete" data-confirm="Backup-Datei wirklich löschen?">
                   <input type="hidden" name="_csrf" value="${escapeHtml(csrf)}" />
                   <input type="hidden" name="fileName" value="${safeName}" />
                   <button type="submit" class="danger tiny" ${disableDelete ? "disabled" : ""}>Löschen</button>
@@ -279,6 +263,15 @@
       startButton.disabled = false;
     } finally {
       schedulePoll(300);
+    }
+  });
+
+  filesBody.addEventListener("submit", (event) => {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    const message = form.dataset.confirm;
+    if (message && !confirm(message)) {
+      event.preventDefault();
     }
   });
 

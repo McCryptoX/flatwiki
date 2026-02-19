@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { config } from "../config.js";
 import type { SessionRecord } from "../types.js";
 import { ensureFile, readJsonFile, writeJsonFile } from "./fileStore.js";
@@ -20,14 +20,23 @@ const withMutationLock = async <T>(task: () => Promise<T>): Promise<T> => {
   }
 };
 
+/* ── In-memory cache ──────────────────────────────────────────────── */
+
+let cachedSessions: SessionRecord[] | null = null;
+
 const loadSessions = async (): Promise<SessionRecord[]> => {
+  if (cachedSessions) return cachedSessions;
   await ensureFile(config.sessionsFile, "[]\n");
-  return readJsonFile<SessionRecord[]>(config.sessionsFile, []);
+  cachedSessions = await readJsonFile<SessionRecord[]>(config.sessionsFile, []);
+  return cachedSessions;
 };
 
 const saveSessions = async (sessions: SessionRecord[]): Promise<void> => {
+  cachedSessions = sessions;
   await writeJsonFile(config.sessionsFile, sessions);
 };
+
+/* ── Helpers ──────────────────────────────────────────────────────── */
 
 const isExpired = (session: SessionRecord): boolean => new Date(session.expiresAt).getTime() <= Date.now();
 
@@ -37,6 +46,10 @@ const nextExpiryIso = (): string => {
   return expiresAt.toISOString();
 };
 
+const generateCsrfToken = (): string => randomBytes(32).toString("hex");
+
+/* ── Public API ───────────────────────────────────────────────────── */
+
 export const createSession = async (userId: string, ip?: string, userAgent?: string): Promise<SessionRecord> => {
   return withMutationLock(async () => {
     const sessions = await loadSessions();
@@ -45,7 +58,7 @@ export const createSession = async (userId: string, ip?: string, userAgent?: str
     const session: SessionRecord = {
       id: randomUUID(),
       userId,
-      csrfToken: randomUUID(),
+      csrfToken: generateCsrfToken(),
       createdAt: now,
       expiresAt: nextExpiryIso(),
       ip,
