@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -105,6 +105,9 @@ const ifNoneMatchMatches = (ifNoneMatchHeader: string | string[] | undefined, et
   const normalizedExpected = normalizeWeakEtag(etag);
   return candidates.some((entry) => normalizeWeakEtag(entry) === normalizedExpected);
 };
+
+const buildPageFallbackEtag = (slug: string, updatedAt: string): string =>
+  createHash("sha256").update(`${slug}:${updatedAt}`, "utf8").digest("hex");
 
 const normalizeUsernames = (values: string[]): string[] => {
   const seen = new Set<string>();
@@ -1278,7 +1281,8 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     // Authenticated responses include user-specific fragments (watch state, badges).
     if (!request.currentUser) {
       try {
-        const { etag: rawEtag } = await etagWikiPage(normalizedSlug);
+        const { etag: fileEtag, exists } = await etagWikiPage(normalizedSlug);
+        const rawEtag = exists && fileEtag ? fileEtag : buildPageFallbackEtag(page.slug, page.updatedAt);
         const etag = `W/"${rawEtag}"`;
         reply.header("ETag", etag);
         reply.header("Cache-Control", "private, no-cache");
