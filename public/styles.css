@@ -1,6 +1,9 @@
 /* ── Default Theme Variables (Dark) ── */
 :root {
   --bg: #111118;
+  --surface: rgba(26, 26, 39, 0.92);
+  --text: #e4e5eb;
+  --border: #2d2d3d;
   --bg-alt: #1a1a27;
   --ink: #e4e5eb;
   --muted: #9ca3af;
@@ -34,6 +37,9 @@
 /* ── Light Override ── */
 [data-theme="light"] {
   --bg: #f8f9fb;
+  --surface: rgba(255, 255, 255, 0.92);
+  --text: #1a1d26;
+  --border: #e2e5eb;
   --bg-alt: #eef1f8;
   --ink: #1a1d26;
   --muted: #6b7280;
@@ -57,6 +63,16 @@
   color-scheme: light;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111118;
+    --surface: rgba(26, 26, 39, 0.92);
+    --text: #e4e5eb;
+    --border: #2d2d3d;
+    color-scheme: dark;
+  }
+}
+
 /* ── Reset ── */
 * {
   box-sizing: border-box;
@@ -68,7 +84,7 @@ body {
   min-height: 100vh;
   min-height: 100dvh;
   font-family: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  color: var(--ink);
+  color: var(--text);
   background: var(--bg);
 }
 
@@ -101,6 +117,18 @@ a {
   color: inherit;
 }
 
+.wiki-content a,
+.wiki-article a,
+.mobile-sidebar a {
+  color: var(--accent);
+}
+
+.wiki-content a:hover,
+.wiki-article a:hover,
+.mobile-sidebar a:hover {
+  color: var(--accent-hover);
+}
+
 /* ── Header ── */
 .site-header {
   position: sticky;
@@ -114,7 +142,7 @@ a {
   background: var(--glass-bg);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--border);
 }
 
 .site-header.site-header-no-search {
@@ -203,6 +231,79 @@ a {
   gap: 0.65rem;
 }
 
+.mobile-menu-toggle {
+  display: none;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 999px;
+}
+
+.mobile-menu-toggle:hover {
+  background: var(--accent-soft);
+  box-shadow: none;
+  transform: none;
+}
+
+.mobile-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 34;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.mobile-sidebar {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: -280px;
+  width: 280px;
+  height: 100vh;
+  z-index: 35;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  box-shadow: 2px 0 16px rgba(0, 0, 0, 0.35);
+  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 0.9rem;
+}
+
+.mobile-sidebar.open {
+  left: 0;
+}
+
+.mobile-sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mobile-sidebar-theme {
+  display: flex;
+}
+
+.mobile-sidebar-nav {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.mobile-sidebar-nav a {
+  text-decoration: none;
+  padding: 0.35rem 0;
+}
+
+.mobile-sidebar-nav form {
+  margin: 0;
+}
+
+.mobile-sidebar-meta {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-bottom: 0.2rem;
+}
+
 .welcome {
   color: var(--muted);
   font-size: 0.9rem;
@@ -267,8 +368,8 @@ a {
 .content-wrap,
 .auth-card,
 .wiki-page {
-  background: var(--card);
-  border: 1px solid var(--line);
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
 }
@@ -1729,7 +1830,7 @@ th {
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--card);
 }
@@ -1771,7 +1872,7 @@ th {
   padding: 1rem 1.1rem;
   overflow: auto;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
+  border: 1px solid var(--border);
   line-height: 1.55;
 }
 
@@ -2118,6 +2219,43 @@ hr {
 }
 
 /* ── Responsive: Mobile ── */
+@media (max-width: 768px) {
+  .site-header,
+  .site-header.site-header-no-search {
+    grid-template-columns: 1fr auto;
+  }
+
+  .search-form {
+    grid-column: 1 / -1;
+  }
+
+  .mobile-menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    font-size: 1.25rem;
+    line-height: 1;
+  }
+
+  .nav-right {
+    display: none;
+  }
+
+  .mobile-overlay {
+    display: block;
+  }
+
+  .mobile-sidebar {
+    display: flex;
+  }
+
+  body.mobile-menu-open {
+    overflow: hidden;
+  }
+}
+
 @media (max-width: 900px) {
   .site-header {
     grid-template-columns: 1fr;

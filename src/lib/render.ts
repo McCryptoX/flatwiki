@@ -66,6 +66,28 @@ export const renderLayout = (options: LayoutOptions): string => {
     `
     : `<div class="nav-right">${themeToggle} <a href="/login">Anmelden</a></div>`;
 
+  const mobileSidebarNav = user
+    ? `
+      <div class="mobile-sidebar-meta">
+        <strong>${escapeHtml(user.displayName)}</strong>
+      </div>
+      <a href="/toc">Inhaltsverzeichnis</a>
+      <a href="/notifications">Benachrichtigungen${
+        user.unreadNotificationsCount && user.unreadNotificationsCount > 0
+          ? ` <span class="notif-badge">${Math.min(user.unreadNotificationsCount, 99)}</span>`
+          : ""
+      }</a>
+      <a href="/account">Konto</a>
+      ${user.role === "admin" ? `<a href="/admin/users">Admin</a>` : ""}
+      <form method="post" action="/logout">
+        <input type="hidden" name="_csrf" value="${escapeHtml(options.csrfToken ?? "")}" />
+        <button type="submit" class="ghost">Abmelden</button>
+      </form>
+    `
+    : `
+      <a href="/login">Anmelden</a>
+    `;
+
   const showHeaderSearch = !options.hideHeaderSearch && (user || publicReadEnabled);
   const search = showHeaderSearch
     ? `
@@ -87,8 +109,8 @@ export const renderLayout = (options: LayoutOptions): string => {
   const optionScripts = options.scripts ?? [];
   const hasArticlePage = options.body.includes('class="wiki-page article-page');
   const hasArticleTocScript = optionScripts.some((path) => path.startsWith("/article-toc.js"));
-  const autoArticleScripts = hasArticlePage && !hasArticleTocScript ? ["/article-toc.js?v=3"] : [];
-  const scripts = [...(user || publicReadEnabled ? ["/search-suggest.js?v=2", "/cmd-palette.js?v=1"] : []), ...optionScripts, ...autoArticleScripts]
+  const autoArticleScripts = hasArticlePage && !hasArticleTocScript ? ["/article-toc.js?v=4"] : [];
+  const scripts = [...(user || publicReadEnabled ? ["/search-suggest.js?v=2", "/cmd-palette.js?v=1"] : []), "/js/main.js?v=2", ...optionScripts, ...autoArticleScripts]
     .filter((scriptPath) => scriptPath.startsWith("/"))
     .map((scriptPath) => `<script src="${escapeHtml(scriptPath)}" defer></script>`)
     .join("\n");
@@ -104,7 +126,7 @@ export const renderLayout = (options: LayoutOptions): string => {
     <meta name="color-scheme" content="light dark" />
     <script src="/theme-init.js?v=3"></script>
     <title>${title}</title>
-    <link rel="stylesheet" href="/styles.css?v=32" />
+    <link rel="stylesheet" href="/styles.css?v=33" />
   </head>
   <body>
     <header class="site-header ${showHeaderSearch ? "" : "site-header-no-search"}">
@@ -113,8 +135,27 @@ export const renderLayout = (options: LayoutOptions): string => {
         <p class="subtitle">Sicheres Flat-File Wiki</p>
       </div>
       ${search}
+      <button
+        type="button"
+        class="mobile-menu-toggle"
+        data-mobile-menu-toggle
+        aria-label="Navigation öffnen"
+        aria-controls="mobile-sidebar"
+        aria-expanded="false"
+      >☰</button>
       ${navRight}
     </header>
+    <div class="mobile-overlay" data-mobile-overlay hidden></div>
+    <aside class="mobile-sidebar" id="mobile-sidebar" data-mobile-sidebar aria-hidden="true">
+      <div class="mobile-sidebar-head">
+        <strong>${escapeHtml(siteTitle)}</strong>
+        <button type="button" class="ghost tiny" data-mobile-menu-close aria-label="Navigation schließen">✕</button>
+      </div>
+      <div class="mobile-sidebar-theme">${themeToggle}</div>
+      <nav class="mobile-sidebar-nav" aria-label="Mobile Navigation">
+        ${mobileSidebarNav}
+      </nav>
+    </aside>
 
     <main class="container">
       ${flash}
