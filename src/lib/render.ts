@@ -126,7 +126,8 @@ export const renderLayout = (options: LayoutOptions): string => {
     <meta name="color-scheme" content="light dark" />
     <script src="/theme-init.js?v=3"></script>
     <title>${title}</title>
-    <link rel="stylesheet" href="/styles.css?v=33" />
+    <link rel="stylesheet" href="/css/theme.css?v=1" />
+    <link rel="stylesheet" href="/css/components.css?v=1" />
   </head>
   <body>
     <header class="site-header ${showHeaderSearch ? "" : "site-header-no-search"}">

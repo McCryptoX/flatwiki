@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { requireAuth, verifySessionCsrfToken } from "../lib/auth.js";
+import { requireApiAuth, verifySessionCsrfToken } from "../lib/auth.js";
 import type { Theme } from "../types.js";
 import { updateUserTheme } from "../lib/userStore.js";
 
@@ -12,7 +12,7 @@ const asRecord = (value: unknown): Record<string, unknown> => {
 
 export const registerUserRoutes = async (app: FastifyInstance): Promise<void> => {
   // GET /api/user/me — returns public user data including theme; 401 if not logged in
-  app.get("/api/user/me", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.get("/api/user/me", { preHandler: [requireApiAuth] }, async (request, reply) => {
     const user = request.currentUser;
     if (!user) {
       return reply.code(401).send({ error: "Nicht angemeldet." });
@@ -34,7 +34,7 @@ export const registerUserRoutes = async (app: FastifyInstance): Promise<void> =>
   app.post(
     "/api/user/theme",
     {
-      preHandler: [requireAuth],
+      preHandler: [requireApiAuth],
       config: { rateLimit: { max: 10, timeWindow: "1 minute" } }
     },
     async (request, reply) => {

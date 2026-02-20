@@ -112,6 +112,11 @@ export const requireAuth = async (request: FastifyRequest, reply: FastifyReply):
   reply.redirect(`/login?next=${next}`);
 };
 
+export const requireApiAuth = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+  if (request.currentUser) return;
+  return reply.code(401).send({ error: "Nicht angemeldet." });
+};
+
 export const requireAuthOrPublicRead = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
   if (request.currentUser) return;
 

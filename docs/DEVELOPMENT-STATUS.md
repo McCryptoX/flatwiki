@@ -1,3 +1,13 @@
+## 20.02.2026 – CSS-Struktur modernisiert (Theme + Components)
+
+- Neue Struktur eingeführt:
+- `public/css/theme.css`: Design-Tokens (`:root`), Layer-Definition (`@layer theme, base, components, utilities`), Base-Styles, sichtbarer `:focus-visible` und `prefers-reduced-motion`.
+- `public/css/components.css`: Komponenten-Stile (Navigation, Buttons, Formulare, Tabellen, Cards, Wiki/Admin-UI konsolidiert).
+- Dark-Mode-Strategie: Dark als Standard in Tokens; Light über `[data-theme="light"]`, plus `meta name="color-scheme"` im Layout.
+- Migrationspfad: `public/styles.css` bleibt als Fallback-Datei im Repo bestehen, wird aber nicht mehr eingebunden.
+- Layout aktualisiert: globale CSS-Links auf `/css/theme.css` + `/css/components.css` umgestellt.
+- Ziel erreicht: minimale, produktionsnahe UI-Polish-Migration ohne neue Dependencies.
+
 ## UI-Status 20.02.2026 – Dashboard (Screenshots Light/Dark analysiert)
 
 - Bewertung: 81 % Eye-Candy (stark 2025 → 2026-Upgrade)
