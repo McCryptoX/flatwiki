@@ -253,6 +253,10 @@ a {
   background: rgba(0, 0, 0, 0.45);
 }
 
+.mobile-overlay[hidden] {
+  display: none !important;
+}
+
 .mobile-sidebar {
   display: none;
   position: fixed;
@@ -2243,7 +2247,7 @@ hr {
     display: none;
   }
 
-  .mobile-overlay {
+  .mobile-overlay:not([hidden]) {
     display: block;
   }
 
