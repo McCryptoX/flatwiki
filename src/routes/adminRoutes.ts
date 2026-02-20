@@ -1206,6 +1206,7 @@ type AdminNavKey =
   | "versions"
   | "backups"
   | "links"
+  | "seo"
   | "index"
   | "ssl";
 
@@ -1219,6 +1220,7 @@ const ADMIN_NAV_ITEMS: Array<{ key: AdminNavKey; href: string; label: string; mi
   { key: "groups", href: "/admin/groups", label: "Gruppen", minMode: "advanced" },
   { key: "versions", href: "/admin/versions", label: "Versionen", minMode: "advanced" },
   { key: "backups", href: "/admin/backups", label: "Backups", minMode: "advanced" },
+  { key: "seo", href: "/admin/seo", label: "SEO / robots.txt" },
   { key: "ssl", href: "/admin/ssl", label: "TLS/SSL", minMode: "advanced" },
   { key: "links", href: "/admin/links", label: "Link-Check", minMode: "advanced" },
   { key: "index", href: "/admin/index", label: "Suchindex", minMode: "advanced" }

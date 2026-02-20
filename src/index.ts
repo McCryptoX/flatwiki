@@ -21,6 +21,7 @@ import { registerAdminRoutes } from "./routes/adminRoutes.js";
 import { registerAuthRoutes } from "./routes/authRoutes.js";
 import { registerPublicRoutes } from "./routes/publicRoutes.js";
 import { registerSetupRoutes } from "./routes/setupRoutes.js";
+import { registerSeoRoutes } from "./routes/seoRoutes.js";
 import { registerUserRoutes } from "./routes/userRoutes.js";
 import { registerWikiRoutes } from "./routes/wikiRoutes.js";
 
@@ -115,6 +116,7 @@ const registerRoutes = async (): Promise<void> => {
   await registerWikiRoutes(app);
   await registerAdminRoutes(app);
   await registerAccountRoutes(app);
+  await registerSeoRoutes(app);
   await registerPublicRoutes(app);
 };
 
