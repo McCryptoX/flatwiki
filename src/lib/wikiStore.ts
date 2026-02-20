@@ -22,7 +22,7 @@ marked.use({
 
 hljs.registerLanguage("bash", bashLanguage);
 
-const SLUG_PATTERN = /^[a-z0-9-]{1,80}$/;
+const SLUG_PATTERN = /^[a-z0-9_-]{1,80}$/i;
 const SUGGESTION_INDEX_MAX_AGE_MS = 20_000;
 const INTERNAL_LINK_GRAPH_MAX_AGE_MS = 30_000;
 const INTERNAL_LINK_PATTERN = /\[\[([^\]|]+?)(?:\|([^\]]+))?\]\]/g;
@@ -403,11 +403,56 @@ const normalizeAllowedGroups = (value: unknown): string[] => {
   return result;
 };
 
-const getWikiShard = (slug: string): string => slug.slice(0, 2).replace(/[^a-z0-9]/g, "_").padEnd(2, "_");
+const getWikiShard = (slug: string): string => slug.slice(0, 2).replace(/[^a-z0-9]/gi, "_").padEnd(2, "_");
 
-const resolveLegacyPagePath = (slug: string): string => path.join(config.wikiDir, `${slug}.md`);
+const normalizedWikiRoot = path.resolve(config.wikiDir);
 
-const resolvePagePath = (slug: string): string => path.join(config.wikiDir, getWikiShard(slug), `${slug}.md`);
+export class InvalidArticleSlugError extends Error {
+  readonly statusCode = 400;
+
+  constructor(message = "Ungültiger Slug.") {
+    super(message);
+    this.name = "InvalidArticleSlugError";
+  }
+}
+
+export const normalizeArticleSlug = (slugInput: string): string => {
+  const raw = String(slugInput ?? "").trim();
+  if (!raw) {
+    throw new InvalidArticleSlugError("Ungültiger Slug.");
+  }
+
+  let decoded = raw;
+  if (decoded.includes("%")) {
+    try {
+      decoded = decodeURIComponent(decoded);
+    } catch {
+      throw new InvalidArticleSlugError("Ungültiger Slug.");
+    }
+  }
+
+  const normalized = decoded.trim().toLowerCase();
+  if (!SLUG_PATTERN.test(normalized)) {
+    throw new InvalidArticleSlugError("Ungültiger Slug.");
+  }
+  return normalized;
+};
+
+export const safeArticlePath = (slugInput: string, options?: { legacy?: boolean }): string => {
+  const slug = normalizeArticleSlug(slugInput);
+  const relativePath = options?.legacy ? `${slug}.md` : path.join(getWikiShard(slug), `${slug}.md`);
+  const articlePath = path.resolve(normalizedWikiRoot, relativePath);
+  const boundary = path.relative(normalizedWikiRoot, articlePath);
+  // Central boundary check blocks traversal even if encoded separators slip through upstream checks.
+  if (boundary.startsWith("..") || path.isAbsolute(boundary)) {
+    throw new InvalidArticleSlugError("Ungültiger Slug.");
+  }
+  return articlePath;
+};
+
+const resolveLegacyPagePath = (slug: string): string => safeArticlePath(slug, { legacy: true });
+
+const resolvePagePath = (slug: string): string => safeArticlePath(slug);
 
 const listMarkdownFilesRecursive = async (rootDir: string): Promise<string[]> => {
   const files: string[] = [];
@@ -443,8 +488,12 @@ const listMarkdownFilesRecursive = async (rootDir: string): Promise<string[]> =>
 };
 
 const resolveAllPagePaths = async (slug: string): Promise<string[]> => {
-  const normalizedSlug = slug.trim().toLowerCase();
-  if (!SLUG_PATTERN.test(normalizedSlug)) return [];
+  let normalizedSlug = "";
+  try {
+    normalizedSlug = normalizeArticleSlug(slug);
+  } catch {
+    return [];
+  }
 
   const seen = new Set<string>();
   const matches: string[] = [];
@@ -1218,8 +1267,12 @@ const loadPersistedPageSummaries = async (options?: { categoryId?: string }): Pr
 };
 
 export const getPage = async (slug: string): Promise<WikiPage | null> => {
-  const normalizedSlug = slug.trim().toLowerCase();
-  if (!isValidSlug(normalizedSlug)) return null;
+  let normalizedSlug = "";
+  try {
+    normalizedSlug = normalizeArticleSlug(slug);
+  } catch {
+    return null;
+  }
 
   const filePath = await resolveExistingPagePath(normalizedSlug);
   if (!filePath) return null;
@@ -1243,12 +1296,13 @@ export interface SavePageInput {
 }
 
 export const savePage = async (input: SavePageInput): Promise<{ ok: boolean; error?: string }> => {
-  const slug = input.slug.trim().toLowerCase();
-  const title = input.title.trim();
-
-  if (!isValidSlug(slug)) {
+  let slug = "";
+  try {
+    slug = normalizeArticleSlug(input.slug);
+  } catch {
     return { ok: false, error: "Seitenadresse ist ungültig." };
   }
+  const title = input.title.trim();
 
   if (title.length < 2 || title.length > 120) {
     return { ok: false, error: "Titel muss zwischen 2 und 120 Zeichen lang sein." };
@@ -1400,8 +1454,12 @@ export const deletePage = async (
   slug: string,
   options?: { deletedBy?: string }
 ): Promise<{ ok: boolean; deleted: boolean; error?: string }> => {
-  const normalizedSlug = slug.trim().toLowerCase();
-  if (!isValidSlug(normalizedSlug)) return { ok: false, deleted: false, error: "Ungültiger Slug." };
+  let normalizedSlug = "";
+  try {
+    normalizedSlug = normalizeArticleSlug(slug);
+  } catch {
+    return { ok: false, deleted: false, error: "Ungültiger Slug." };
+  }
 
   const existingPage = await getPage(normalizedSlug);
   const pagePaths = await resolveAllPagePaths(normalizedSlug);
@@ -1562,21 +1620,33 @@ export const renderMarkdownPreview = (markdown: string): string => {
 };
 
 export const listPageHistory = async (slugInput: string, limit = 100): Promise<PageVersionSummary[]> => {
-  const slug = slugInput.trim().toLowerCase();
-  if (!isValidSlug(slug)) return [];
+  let slug = "";
+  try {
+    slug = normalizeArticleSlug(slugInput);
+  } catch {
+    return [];
+  }
   return listPageVersions(slug, limit);
 };
 
 export const getPageVersionRawContent = async (slugInput: string, versionId: string): Promise<string | null> => {
-  const slug = slugInput.trim().toLowerCase();
-  if (!isValidSlug(slug)) return null;
+  let slug = "";
+  try {
+    slug = normalizeArticleSlug(slugInput);
+  } catch {
+    return null;
+  }
   const version = await getPageVersion(slug, versionId);
   return version?.fileContent ?? null;
 };
 
 export const getCurrentPageRawContent = async (slugInput: string): Promise<string | null> => {
-  const slug = slugInput.trim().toLowerCase();
-  if (!isValidSlug(slug)) return null;
+  let slug = "";
+  try {
+    slug = normalizeArticleSlug(slugInput);
+  } catch {
+    return null;
+  }
   const existingPath = await resolveExistingPagePath(slug);
   if (!existingPath) return null;
   return await readTextFile(existingPath);
@@ -1587,8 +1657,10 @@ export const restorePageVersion = async (input: {
   versionId: string;
   restoredBy: string;
 }): Promise<{ ok: boolean; error?: string }> => {
-  const slug = input.slug.trim().toLowerCase();
-  if (!isValidSlug(slug)) {
+  let slug = "";
+  try {
+    slug = normalizeArticleSlug(input.slug);
+  } catch {
     return {
       ok: false,
       error: "Ungültiger Slug."
