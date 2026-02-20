@@ -84,7 +84,7 @@ export const renderLayout = (options: LayoutOptions): string => {
     options.error ? `<div class="flash error">${escapeHtml(options.error)}</div>` : ""
   ].join("\n");
 
-  const scripts = [...(user || publicReadEnabled ? ["/search-suggest.js?v=2"] : []), ...(options.scripts ?? [])]
+  const scripts = [...(user || publicReadEnabled ? ["/search-suggest.js?v=2", "/cmd-palette.js?v=1"] : []), ...(options.scripts ?? [])]
     .filter((scriptPath) => scriptPath.startsWith("/"))
     .map((scriptPath) => `<script src="${escapeHtml(scriptPath)}" defer></script>`)
     .join("\n");
