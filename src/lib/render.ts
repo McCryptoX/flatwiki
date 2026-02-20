@@ -39,9 +39,12 @@ export const renderLayout = (options: LayoutOptions): string => {
   const user = options.user;
   const publicReadEnabled = getPublicReadEnabled();
 
+  const themeToggle = `<button type="button" class="theme-toggle ghost tiny" aria-label="Farbschema wechseln" data-theme-toggle><span class="theme-toggle-icon" aria-hidden="true"></span></button>`;
+
   const navRight = user
     ? `
       <div class="nav-right">
+        ${themeToggle}
         <span class="welcome">${escapeHtml(user.displayName)}</span>
         <a href="/toc">Inhaltsverzeichnis</a>
         <a href="/notifications">Benachrichtigungen${
@@ -61,7 +64,7 @@ export const renderLayout = (options: LayoutOptions): string => {
         </form>
       </div>
     `
-    : `<a href="/login">Anmelden</a>`;
+    : `<div class="nav-right">${themeToggle} <a href="/login">Anmelden</a></div>`;
 
   const showHeaderSearch = !options.hideHeaderSearch && (user || publicReadEnabled);
   const search = showHeaderSearch
@@ -86,18 +89,20 @@ export const renderLayout = (options: LayoutOptions): string => {
     .map((scriptPath) => `<script src="${escapeHtml(scriptPath)}" defer></script>`)
     .join("\n");
 
+  const htmlTheme = user?.theme && user.theme !== "system" ? ` data-theme="${escapeHtml(user.theme)}"` : "";
+
   return `<!doctype html>
-<html lang="de">
+<html lang="de"${htmlTheme}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="referrer" content="same-origin" />
+    <meta name="color-scheme" content="light dark" />
+    <script src="/theme-init.js?v=2"></script>
     <title>${title}</title>
-    <link rel="stylesheet" href="/styles.css?v=30" />
+    <link rel="stylesheet" href="/styles.css?v=31" />
   </head>
   <body>
-    <div class="bg-shape bg-shape-1"></div>
-    <div class="bg-shape bg-shape-2"></div>
     <header class="site-header ${showHeaderSearch ? "" : "site-header-no-search"}">
       <div>
         <a href="/" class="brand">${escapeHtml(siteTitle)}</a>
@@ -117,6 +122,7 @@ export const renderLayout = (options: LayoutOptions): string => {
       <a href="/impressum">Impressum</a>
     </footer>
     <script src="/utils.js?v=1"></script>
+    <script src="/theme-toggle.js?v=2" defer></script>
     ${scripts}
   </body>
 </html>`;
