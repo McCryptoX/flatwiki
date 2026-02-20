@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { config } from "../config.js";
-import type { PublicUser, Role, UserRecord } from "../types.js";
+import type { PublicUser, Role, Theme, UserRecord } from "../types.js";
 import { ensureFile, readJsonFile, writeJsonFile } from "./fileStore.js";
 import { hashPassword, needsRehash, verifyPassword } from "./password.js";
 
@@ -30,9 +30,18 @@ const toPublicUser = (user: UserRecord): PublicUser => {
 
 const normalizeUsername = (username: string): string => username.trim().toLowerCase();
 
+const VALID_THEMES: Theme[] = ["light", "dark", "system"];
+
 const loadUsers = async (): Promise<UserRecord[]> => {
   await ensureFile(config.usersFile, "[]\n");
-  return readJsonFile<UserRecord[]>(config.usersFile, []);
+  const users = await readJsonFile<UserRecord[]>(config.usersFile, []);
+  // Migration: add theme field to any record that lacks it (no save here — callers handle persistence)
+  for (const user of users) {
+    if (!VALID_THEMES.includes(user.theme)) {
+      user.theme = "system";
+    }
+  }
+  return users;
 };
 
 const saveUsers = async (users: UserRecord[]): Promise<void> => {
@@ -107,7 +116,8 @@ export const createUser = async (input: CreateUserInput): Promise<{ user?: Publi
       passwordHash: await hashPassword(input.password),
       createdAt: now,
       updatedAt: now,
-      disabled: false
+      disabled: false,
+      theme: "system"
     };
 
     users.push(newUser);
@@ -146,7 +156,8 @@ export const setupInitialAdmin = async (input: {
       passwordHash: await hashPassword(input.password),
       createdAt: now,
       updatedAt: now,
-      disabled: false
+      disabled: false,
+      theme: "system"
     };
 
     await saveUsers([admin]);
@@ -267,6 +278,17 @@ export const setUserPasswordByAdmin = async (userId: string, password: string): 
   });
 };
 
+export const updateUserTheme = async (userId: string, theme: Theme): Promise<void> => {
+  await withMutationLock(async () => {
+    const users = await loadUsers();
+    const user = users.find((candidate) => candidate.id === userId);
+    if (!user) return;
+    user.theme = theme;
+    user.updatedAt = new Date().toISOString();
+    await saveUsers(users);
+  });
+};
+
 export const touchLastLogin = async (userId: string): Promise<void> => {
   await withMutationLock(async () => {
     const users = await loadUsers();
@@ -304,7 +326,8 @@ export const ensureInitialAdmin = async (): Promise<{ created: boolean; username
       passwordHash: await hashPassword(bootstrapPassword),
       createdAt: now,
       updatedAt: now,
-      disabled: false
+      disabled: false,
+      theme: "system"
     };
 
     await saveUsers([admin]);

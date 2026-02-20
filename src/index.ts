@@ -21,6 +21,7 @@ import { registerAdminRoutes } from "./routes/adminRoutes.js";
 import { registerAuthRoutes } from "./routes/authRoutes.js";
 import { registerPublicRoutes } from "./routes/publicRoutes.js";
 import { registerSetupRoutes } from "./routes/setupRoutes.js";
+import { registerUserRoutes } from "./routes/userRoutes.js";
 import { registerWikiRoutes } from "./routes/wikiRoutes.js";
 
 const app = Fastify({
@@ -110,6 +111,7 @@ const registerRoutes = async (): Promise<void> => {
 
   await registerSetupRoutes(app);
   await registerAuthRoutes(app);
+  await registerUserRoutes(app);
   await registerWikiRoutes(app);
   await registerAdminRoutes(app);
   await registerAccountRoutes(app);

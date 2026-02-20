@@ -1,4 +1,5 @@
 export type Role = "admin" | "user";
+export type Theme = "light" | "dark" | "system";
 
 export interface UserRecord {
   id: string;
@@ -10,6 +11,7 @@ export interface UserRecord {
   updatedAt: string;
   lastLoginAt?: string | undefined;
   disabled: boolean;
+  theme: Theme;
 }
 
 export interface PublicUser extends Omit<UserRecord, "passwordHash"> {
