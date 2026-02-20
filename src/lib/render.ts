@@ -203,6 +203,7 @@ export const renderLayout = (options: LayoutOptions): string => {
     <footer class="site-footer">
       <a href="/privacy">Datenschutz</a>
       <a href="/impressum">Impressum</a>
+      <a href="https://flatwiki.de/" target="_blank" rel="noopener noreferrer" class="footer-powered">Powered by FlatWiki</a>
     </footer>
     <script src="/utils.js?v=1" defer></script>
     <script src="/theme-toggle.js?v=3" defer></script>
