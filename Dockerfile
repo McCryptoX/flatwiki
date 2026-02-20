@@ -15,9 +15,13 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev && npm cache clean --force
 
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/public ./public
-COPY --from=build /app/data/wiki ./data/wiki
+COPY --from=build --chown=node:node /app/dist ./dist
+COPY --from=build --chown=node:node /app/public ./public
+COPY --from=build --chown=node:node /app/data/wiki ./data/wiki
+RUN mkdir -p /app/data && chown -R node:node /app/data /app
+
+# Runtime runs as non-root; writable /app/data keeps wiki edits functional.
+USER node
 
 EXPOSE 3000
 CMD ["node", "--enable-source-maps", "dist/index.js"]
