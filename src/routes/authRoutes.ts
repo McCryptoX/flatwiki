@@ -84,7 +84,8 @@ export const registerAuthRoutes = async (app: FastifyInstance): Promise<void> =>
     {
       config: {
         rateLimit: {
-          max: 8,
+          // Login is brute-force sensitive, so we enforce a stricter per-route cap.
+          max: 5,
           timeWindow: "1 minute"
         }
       }
