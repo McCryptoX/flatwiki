@@ -71,6 +71,7 @@ export const registerAuthRoutes = async (app: FastifyInstance): Promise<void> =>
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Anmeldung",
         body,
         error,

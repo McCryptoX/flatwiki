@@ -55,6 +55,7 @@ export const registerSetupRoutes = async (app: FastifyInstance): Promise<void> =
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Ersteinrichtung",
         body,
         error: query.error,

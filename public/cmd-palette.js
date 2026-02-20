@@ -15,8 +15,18 @@
   let backdrop = null;
   let selectedIndex = -1;
   let currentResults = [];
+  let currentItems = [];
   let debounceTimer = null;
   let abortController = null;
+  let lastFocusedBeforeOpen = null;
+
+  const quickActions = () => {
+    const actions = [{ title: "Neue Seite", url: "/wiki/new", tags: ["Aktion"] }];
+    if (document.querySelector('a[href="/admin/users"]')) {
+      actions.push({ title: "Admin / SEO", url: "/admin/seo", tags: ["Admin"] });
+    }
+    return actions;
+  };
 
   // ── Build palette DOM ─────────────────────────────────────────────────
   const buildPalette = () => {
@@ -58,15 +68,16 @@
   const renderResults = (resultsList, suggestions) => {
     resultsList.innerHTML = "";
     currentResults = Array.isArray(suggestions) ? suggestions : [];
+    currentItems = [...quickActions(), ...currentResults];
     selectedIndex = -1;
 
-    if (currentResults.length === 0) {
+    if (currentItems.length === 0) {
       resultsList.append(el("li", "cmd-palette-empty", "Keine Treffer gefunden."));
       return;
     }
 
-    for (let i = 0; i < currentResults.length; i++) {
-      const s = currentResults[i];
+    for (let i = 0; i < currentItems.length; i++) {
+      const s = currentItems[i];
       const item = el("li");
       const link = el("a", "cmd-palette-result");
       link.href = String(s.url || "#");
@@ -89,7 +100,28 @@
   const renderMessage = (resultsList, msg) => {
     resultsList.innerHTML = "";
     currentResults = [];
+    currentItems = [...quickActions()];
     selectedIndex = -1;
+    if (currentItems.length > 0) {
+      for (let i = 0; i < currentItems.length; i++) {
+        const s = currentItems[i];
+        const item = el("li");
+        const link = el("a", "cmd-palette-result");
+        link.href = String(s.url || "#");
+        link.setAttribute("role", "option");
+        link.dataset.idx = String(i);
+        link.append(el("span", "cmd-palette-result-title", String(s.title || "Aktion")));
+        const tags = Array.isArray(s.tags) ? s.tags.slice(0, 2) : [];
+        if (tags.length > 0) {
+          link.append(el("span", "cmd-palette-result-tags", `#${tags.join(" #")}`));
+        }
+        item.append(link);
+        resultsList.append(item);
+      }
+      const hint = el("li", "cmd-palette-empty", msg);
+      resultsList.append(hint);
+      return;
+    }
     resultsList.append(el("li", "cmd-palette-empty", msg));
   };
 
@@ -99,7 +131,7 @@
     for (const link of links) {
       link.removeAttribute("aria-selected");
     }
-    selectedIndex = Math.max(-1, Math.min(currentResults.length - 1, nextIndex));
+    selectedIndex = Math.max(-1, Math.min(currentItems.length - 1, nextIndex));
     if (selectedIndex >= 0) {
       const target = links[selectedIndex];
       if (target instanceof HTMLAnchorElement) {
@@ -113,6 +145,7 @@
   const fetchSuggestions = async (term, resultsList) => {
     if (abortController) abortController.abort();
     abortController = new AbortController();
+    renderMessage(resultsList, "Suche läuft …");
     try {
       const response = await fetch(
         `/api/search/suggest?q=${encodeURIComponent(term)}&limit=8`,
@@ -137,7 +170,34 @@
       renderMessage(resultsList, "Mindestens 2 Zeichen eingeben \u2026");
       return;
     }
-    debounceTimer = setTimeout(() => void fetchSuggestions(term, resultsList), 170);
+    debounceTimer = setTimeout(() => void fetchSuggestions(term, resultsList), 200);
+  };
+
+  const getFocusable = () =>
+    backdrop
+      ? Array.from(
+          backdrop.querySelectorAll(
+            'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        ).filter((node) => node instanceof HTMLElement && node.offsetParent !== null)
+      : [];
+
+  const trapFocus = (event) => {
+    if (!backdrop || event.key !== "Tab") return;
+    const focusable = getFocusable();
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement;
+    if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+      return;
+    }
+    if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
   };
 
   // ── Open / close ──────────────────────────────────────────────────────
@@ -149,11 +209,17 @@
     backdrop = null;
     selectedIndex = -1;
     currentResults = [];
+    currentItems = [];
+    if (lastFocusedBeforeOpen instanceof HTMLElement) {
+      lastFocusedBeforeOpen.focus();
+    }
+    lastFocusedBeforeOpen = null;
   };
 
   const open = () => {
     if (backdrop) return;
 
+    lastFocusedBeforeOpen = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const { bd, input, resultsList } = buildPalette();
     backdrop = bd;
     document.body.append(bd);
@@ -171,6 +237,10 @@
         close();
         return;
       }
+      if (e.key === "Tab") {
+        trapFocus(e);
+        return;
+      }
       if (e.key === "ArrowDown") {
         e.preventDefault();
         updateSelection(resultsList, selectedIndex + 1);
@@ -183,8 +253,8 @@
       }
       if (e.key === "Enter") {
         e.preventDefault();
-        if (selectedIndex >= 0 && currentResults[selectedIndex]) {
-          window.location.href = String(currentResults[selectedIndex].url || "#");
+        if (selectedIndex >= 0 && currentItems[selectedIndex]) {
+          window.location.href = String(currentItems[selectedIndex].url || "#");
         } else {
           const term = input.value.trim();
           if (term.length > 0) {
@@ -221,5 +291,7 @@
         open();
       }
     });
+
+    window.addEventListener("fw:escape", close);
   });
 })();

@@ -154,6 +154,7 @@ export const registerAccountRoutes = async (app: FastifyInstance): Promise<void>
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Mein Konto",
         body,
         user,
@@ -310,6 +311,7 @@ export const registerAccountRoutes = async (app: FastifyInstance): Promise<void>
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Benachrichtigungen",
         body,
         user,

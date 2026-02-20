@@ -5,9 +5,9 @@ BRANCH="${BRANCH:-main}"
 HOFF_DIR="${HOFF_DIR:-/opt/flatwiki-hoffmann}"
 PUBLIC_DIR="${PUBLIC_DIR:-/opt/flatwiki-public}"
 NETWORK_NAME="${NETWORK_NAME:-flatwiki_proxy}"
-HOFF_DOMAIN="${HOFF_DOMAIN:-wiki.hoffmann.nrw}"
-PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-wiki.flatwiki.de}"
-STATIC_DOMAIN="${STATIC_DOMAIN:-flatwiki.de}"
+HOFF_DOMAIN="${HOFF_DOMAIN:-domain1.de}"
+PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-domain2.de}"
+STATIC_DOMAIN="${STATIC_DOMAIN:-domain2.de}"
 STATIC_DIR="${STATIC_DIR:-/opt/flatwiki-static}"
 ENABLE_FAIL2BAN_SETUP="${ENABLE_FAIL2BAN_SETUP:-1}"
 NO_BUILD="${NO_BUILD:-0}"
@@ -82,8 +82,8 @@ EOF
 check_public_route_in_caddyfile() {
   local file="${HOFF_DIR}/deploy/Caddyfile"
   [ -f "$file" ] || die "Fehlt: $file"
-  if ! grep -Eq '^[[:space:]]*wiki\.flatwiki\.de[[:space:]]*\{' "$file"; then
-    warn "In ${file} fehlt ein Block für wiki.flatwiki.de."
+  if ! grep -Eq '^[[:space:]]*domain2\.de[[:space:]]*\{' "$file"; then
+    warn "In ${file} fehlt ein Block für domain2.de."
     return 0
   fi
 

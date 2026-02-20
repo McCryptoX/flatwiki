@@ -25,6 +25,7 @@
   font-size: 1.5rem;
   font-weight: 800;
   text-decoration: none;
+  color: var(--ink);
 }
 
 .subtitle {
@@ -94,11 +95,30 @@
   color: var(--muted);
 }
 
+.search-suggest-status {
+  display: block;
+  padding: 0.55rem 0.65rem;
+  font-size: 0.84rem;
+  color: var(--muted);
+}
+
+.search-suggest-status.is-loading {
+  color: var(--ink);
+  opacity: 0.85;
+}
+
 /* ── Nav ── */
 .nav-right {
   display: flex;
   align-items: center;
   gap: 0.65rem;
+}
+
+.nav-right a,
+.mobile-sidebar-nav a,
+.site-footer a,
+.toc-index a {
+  color: inherit;
 }
 
 .mobile-menu-toggle {
@@ -1156,6 +1176,28 @@ button,
   transition: background-color 160ms ease, transform 80ms ease;
 }
 
+:where(
+  .site-header button,
+  .mobile-sidebar button,
+  .action-row button,
+  .action-row .button,
+  .toc-toggle,
+  .theme-toggle,
+  .mobile-menu-toggle
+) {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+@media (max-width: 768px) {
+  .nav-right a,
+  .mobile-sidebar-nav a {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
 button:hover,
 .button:hover {
   background: var(--accent-hover);
@@ -1694,7 +1736,40 @@ th {
 }
 
 .wiki-content :is(h2, h3, h4, h5, h6) {
-  scroll-margin-top: 108px;
+  scroll-margin-top: calc(var(--scroll-padding-top) + 0.5rem);
+}
+
+.wiki-content :is(h2, h3).has-anchor-copy {
+  position: relative;
+  padding-right: 1.75rem;
+}
+
+.heading-anchor-copy {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 0;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  opacity: 0.3;
+}
+
+.heading-anchor-copy::before {
+  content: "#";
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.wiki-content :is(h2, h3):hover .heading-anchor-copy,
+.heading-anchor-copy:focus-visible,
+.heading-anchor-copy[data-copied="true"] {
+  opacity: 1;
+  color: var(--accent);
 }
 
 .wiki-table-wrap {
@@ -1751,7 +1826,7 @@ th {
 }
 
 .wiki-content code {
-  font-family: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-family: var(--font-mono);
 }
 
 .wiki-content pre > code.language-bash,

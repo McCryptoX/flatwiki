@@ -32,6 +32,57 @@
   };
 
   onReady(() => {
+    const isEditableTarget = (target) => {
+      if (!(target instanceof HTMLElement)) return false;
+      if (target.isContentEditable) return true;
+      if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
+      if (target instanceof HTMLInputElement) {
+        const nonText = new Set(["button", "submit", "reset", "checkbox", "radio", "range", "color", "file", "image"]);
+        return !nonText.has((target.type || "text").toLowerCase());
+      }
+      return false;
+    };
+
+    const focusPrimarySearch = () => {
+      const candidates = document.querySelectorAll('input[name="q"][type="search"], .search-box input[name="q"]');
+      for (const candidate of candidates) {
+        if (!(candidate instanceof HTMLInputElement)) continue;
+        const hidden =
+          candidate.disabled ||
+          candidate.offsetParent === null ||
+          candidate.closest("[hidden]") !== null ||
+          candidate.getAttribute("aria-hidden") === "true";
+        if (hidden) continue;
+        candidate.focus();
+        candidate.select();
+        return true;
+      }
+      return false;
+    };
+
+    const handleGlobalEscape = () => {
+      window.dispatchEvent(new CustomEvent("fw:escape"));
+      const active = document.activeElement;
+      if (active instanceof HTMLInputElement && active.type === "search" && active.value.length > 0) {
+        active.value = "";
+        active.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    };
+
+    window.addEventListener("keydown", (event) => {
+      if (event.defaultPrevented) return;
+
+      if (event.key === "Escape") {
+        handleGlobalEscape();
+        return;
+      }
+
+      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (isEditableTarget(event.target)) return;
+      if (!focusPrimarySearch()) return;
+      event.preventDefault();
+    });
+
     const mobileToggle = document.querySelector("[data-mobile-menu-toggle]");
     const mobileClose = document.querySelector("[data-mobile-menu-close]");
     const mobileSidebar = document.querySelector("[data-mobile-sidebar]");
@@ -59,10 +110,8 @@
       }
 
       mobileOverlay.addEventListener("click", () => setMobileMenu(false));
-      window.addEventListener("keydown", (event) => {
-        if (event.key === "Escape" && mobileSidebar.classList.contains("open")) {
-          setMobileMenu(false);
-        }
+      window.addEventListener("fw:escape", () => {
+        if (mobileSidebar.classList.contains("open")) setMobileMenu(false);
       });
       window.addEventListener("resize", () => {
         if (window.innerWidth > 768 && mobileSidebar.classList.contains("open")) {

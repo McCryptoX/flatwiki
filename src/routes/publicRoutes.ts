@@ -40,6 +40,7 @@ export const registerPublicRoutes = async (app: FastifyInstance): Promise<void> 
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Datenschutz",
         body,
         user: request.currentUser,
@@ -59,6 +60,7 @@ export const registerPublicRoutes = async (app: FastifyInstance): Promise<void> 
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Impressum",
         body,
         user: request.currentUser,
@@ -78,6 +80,7 @@ export const registerPublicRoutes = async (app: FastifyInstance): Promise<void> 
 
     return reply.code(404).type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "404",
         body,
         user: request.currentUser,

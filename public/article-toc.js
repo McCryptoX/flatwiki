@@ -36,6 +36,44 @@
     }
   };
 
+  const ensureCopyButtons = (headings) => {
+    for (const heading of headings) {
+      if (!(heading instanceof HTMLElement) || !heading.id) continue;
+      if (heading.querySelector(".heading-anchor-copy")) continue;
+
+      const labelText = (heading.textContent || "Abschnitt").trim();
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "heading-anchor-copy";
+      button.setAttribute("aria-label", `Link zu Abschnitt „${labelText}“ kopieren`);
+      button.setAttribute("title", "Abschnitts-Link kopieren");
+      button.setAttribute("data-copied", "false");
+      button.addEventListener("click", async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const targetUrl = `${window.location.origin}${window.location.pathname}${window.location.search}#${encodeURIComponent(heading.id)}`;
+        try {
+          if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+            await navigator.clipboard.writeText(targetUrl);
+          } else {
+            window.location.hash = heading.id;
+          }
+          button.setAttribute("data-copied", "true");
+          button.setAttribute("title", "Link kopiert");
+          window.setTimeout(() => {
+            button.setAttribute("data-copied", "false");
+            button.setAttribute("title", "Abschnitts-Link kopieren");
+          }, 1400);
+        } catch {
+          window.location.hash = heading.id;
+        }
+      });
+
+      heading.classList.add("has-anchor-copy");
+      heading.append(button);
+    }
+  };
+
   const ensureTocShell = () => {
     const main = article.querySelector(".article-main");
     if (!(main instanceof HTMLElement)) return null;
@@ -73,6 +111,7 @@
     if (headings.length < 2) return null;
 
     ensureHeadingIds(headings);
+    ensureCopyButtons(headings);
     const tocRoot = ensureTocShell();
     if (!(tocRoot instanceof HTMLElement)) return null;
 

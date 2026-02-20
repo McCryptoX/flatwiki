@@ -166,6 +166,10 @@
         if (panel.hidden) return;
         setOpen(false);
       });
+
+      window.addEventListener("fw:escape", () => {
+        if (!panel.hidden) setOpen(false);
+      });
     }
   });
 })();

@@ -250,6 +250,7 @@ export const registerSeoRoutes = async (app: FastifyInstance): Promise<void> => 
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "SEO / robots.txt",
         body,
         user: request.currentUser,

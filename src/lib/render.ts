@@ -25,6 +25,9 @@ export const formatDate = (value: string): string => {
 interface LayoutOptions {
   title: string;
   body: string;
+  pageTitle?: string | undefined;
+  pageDescription?: string | undefined;
+  canonicalPath?: string | undefined;
   user?: PublicUser | undefined;
   csrfToken?: string | undefined;
   notice?: string | undefined;
@@ -35,11 +38,18 @@ interface LayoutOptions {
 }
 
 export const renderLayout = (options: LayoutOptions): string => {
-  const title = `${escapeHtml(options.title)} | ${escapeHtml(siteTitle)}`;
+  const resolvedTitle = (options.pageTitle ?? options.title).trim();
+  const title = resolvedTitle.length > 0 ? `${escapeHtml(resolvedTitle)} | ${escapeHtml(siteTitle)}` : escapeHtml(siteTitle);
+  const description = escapeHtml(
+    (options.pageDescription ?? `${resolvedTitle || siteTitle} – ${siteTitle}`).trim().slice(0, 160)
+  );
+  const rawCanonicalPath = ((options.canonicalPath ?? "/").split("?")[0] ?? "/").trim();
+  const canonicalPath = rawCanonicalPath.startsWith("/") ? rawCanonicalPath : `/${rawCanonicalPath}`;
+  const canonicalHref = `${(config.publicBaseUrl || "").replace(/\/+$/, "")}${canonicalPath}`;
   const user = options.user;
   const publicReadEnabled = getPublicReadEnabled();
 
-  const themeToggle = `<button type="button" class="theme-toggle ghost tiny" aria-label="Farbschema wechseln" data-theme-toggle><span class="theme-toggle-icon" aria-hidden="true"></span></button>`;
+  const themeToggle = `<button type="button" class="theme-toggle ghost tiny" aria-label="Farbschema wechseln" title="Farbschema wechseln" data-theme-toggle><span class="theme-toggle-icon" aria-hidden="true"></span></button>`;
 
   const navRight = user
     ? `
@@ -93,7 +103,8 @@ export const renderLayout = (options: LayoutOptions): string => {
     ? `
       <form method="get" action="/search" class="search-form">
         <div class="search-box" data-search-suggest>
-          <input type="search" name="q" value="${escapeHtml(options.searchQuery ?? "")}" placeholder="Wiki durchsuchen" autocomplete="off" required />
+          <label for="global-search" class="sr-only">Wiki durchsuchen</label>
+          <input id="global-search" type="search" name="q" value="${escapeHtml(options.searchQuery ?? "")}" placeholder="Wiki durchsuchen" autocomplete="off" required />
           <div class="search-suggest" hidden></div>
         </div>
         <button type="submit">Suchen</button>
@@ -109,8 +120,8 @@ export const renderLayout = (options: LayoutOptions): string => {
   const optionScripts = options.scripts ?? [];
   const hasArticlePage = options.body.includes('class="wiki-page article-page');
   const hasArticleTocScript = optionScripts.some((path) => path.startsWith("/article-toc.js"));
-  const autoArticleScripts = hasArticlePage && !hasArticleTocScript ? ["/article-toc.js?v=4"] : [];
-  const scripts = [...(user || publicReadEnabled ? ["/search-suggest.js?v=2", "/cmd-palette.js?v=1"] : []), "/js/main.js?v=2", ...optionScripts, ...autoArticleScripts]
+  const autoArticleScripts = hasArticlePage && !hasArticleTocScript ? ["/article-toc.js?v=5"] : [];
+  const scripts = [...(user || publicReadEnabled ? ["/search-suggest.js?v=3", "/cmd-palette.js?v=2"] : []), "/js/main.js?v=3", ...optionScripts, ...autoArticleScripts]
     .filter((scriptPath) => scriptPath.startsWith("/"))
     .map((scriptPath) => `<script src="${escapeHtml(scriptPath)}" defer></script>`)
     .join("\n");
@@ -124,10 +135,37 @@ export const renderLayout = (options: LayoutOptions): string => {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="referrer" content="same-origin" />
     <meta name="color-scheme" content="light dark" />
-    <script src="/theme-init.js?v=3"></script>
+    <script>
+      (() => {
+        const root = document.documentElement;
+        const serverTheme = root.getAttribute("data-theme");
+        if (serverTheme === "dark" || serverTheme === "light") {
+          try {
+            localStorage.setItem("fw-theme", serverTheme);
+          } catch {}
+          return;
+        }
+        let resolved = "dark";
+        try {
+          const saved = localStorage.getItem("fw-theme");
+          if (saved === "dark" || saved === "light") {
+            resolved = saved;
+          } else if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
+            resolved = "light";
+          }
+        } catch {
+          if (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) {
+            resolved = "light";
+          }
+        }
+        root.setAttribute("data-theme", resolved);
+      })();
+    </script>
     <title>${title}</title>
-    <link rel="stylesheet" href="/css/theme.css?v=1" />
-    <link rel="stylesheet" href="/css/components.css?v=1" />
+    <meta name="description" content="${description}" />
+    <link rel="canonical" href="${escapeHtml(canonicalHref)}" />
+    <link rel="stylesheet" href="/css/theme.css?v=2" />
+    <link rel="stylesheet" href="/css/components.css?v=3" />
   </head>
   <body>
     <header class="site-header ${showHeaderSearch ? "" : "site-header-no-search"}">
@@ -141,6 +179,7 @@ export const renderLayout = (options: LayoutOptions): string => {
         class="mobile-menu-toggle"
         data-mobile-menu-toggle
         aria-label="Navigation öffnen"
+        title="Navigation öffnen"
         aria-controls="mobile-sidebar"
         aria-expanded="false"
       >☰</button>
@@ -150,7 +189,7 @@ export const renderLayout = (options: LayoutOptions): string => {
     <aside class="mobile-sidebar" id="mobile-sidebar" data-mobile-sidebar aria-hidden="true">
       <div class="mobile-sidebar-head">
         <strong>${escapeHtml(siteTitle)}</strong>
-        <button type="button" class="ghost tiny" data-mobile-menu-close aria-label="Navigation schließen">✕</button>
+        <button type="button" class="ghost tiny" data-mobile-menu-close aria-label="Navigation schließen" title="Navigation schließen">✕</button>
       </div>
       <div class="mobile-sidebar-theme">${themeToggle}</div>
       <nav class="mobile-sidebar-nav" aria-label="Mobile Navigation">

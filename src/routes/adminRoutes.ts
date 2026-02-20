@@ -1274,6 +1274,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Benutzerverwaltung",
         body,
         user: request.currentUser,
@@ -1300,6 +1301,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Bedienmodus",
         body,
         user: request.currentUser,
@@ -1379,6 +1381,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Bildverwaltung",
         body,
         user: request.currentUser,
@@ -1533,6 +1536,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Wikitext-Import",
         body,
         user: request.currentUser,
@@ -1691,6 +1695,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Kategorien",
         body,
         user: request.currentUser,
@@ -1800,6 +1805,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Vorlagen",
         body,
         user: request.currentUser,
@@ -1946,6 +1952,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Gruppen",
         body,
         user: request.currentUser,
@@ -2019,6 +2026,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Gruppe bearbeiten",
         body,
         user: request.currentUser,
@@ -2131,6 +2139,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Versionshistorie",
         body,
         user: request.currentUser,
@@ -2211,6 +2220,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Backups",
         body,
         user: request.currentUser,
@@ -2237,6 +2247,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "TLS/SSL-Status",
         body,
         user: request.currentUser,
@@ -2541,6 +2552,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Interne Links",
         body,
         user: request.currentUser,
@@ -2568,6 +2580,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Suchindex",
         body,
         user: request.currentUser,
@@ -2686,6 +2699,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Benutzer anlegen",
         body,
         user: request.currentUser,
@@ -2787,6 +2801,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Benutzer bearbeiten",
         body,
         user: request.currentUser,

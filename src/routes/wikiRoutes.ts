@@ -470,10 +470,17 @@ const renderSearchResultList = (
     selectedAuthor: string;
     selectedTimeframe: string;
     selectedScope: string;
+    hasAnyFilter: boolean;
   }
 ): string => {
   if (pages.length < 1) {
-    return '<p class="empty">Keine passenden Ergebnisse gefunden.</p>';
+    if (searchContext.hasAnyFilter) {
+      return '<p class="empty">Keine Treffer mit den aktiven Filtern. Filter anpassen oder zurücksetzen.</p>';
+    }
+    if (searchContext.query.trim().length > 0) {
+      return '<p class="empty">Keine Treffer gefunden. Bitte Suchbegriff ändern.</p>';
+    }
+    return '<p class="empty">Bitte Suchbegriff eingeben oder einen Filter setzen.</p>';
   }
 
   const queryParamsForTag = new URLSearchParams();
@@ -1131,6 +1138,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Wiki",
         body,
         user: request.currentUser,
@@ -1138,7 +1146,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         notice: readSingle(query.notice),
         error: readSingle(query.error),
         hideHeaderSearch: true,
-        scripts: ["/home-search.js?v=4"]
+        scripts: ["/home-search.js?v=5"]
       })
     );
   });
@@ -1199,6 +1207,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Inhaltsverzeichnis",
         body,
         user: request.currentUser,
@@ -1224,6 +1233,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         .type("text/html")
         .send(
           renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
             title: "Nicht gefunden",
             user: request.currentUser,
             csrfToken: request.csrfToken,
@@ -1242,6 +1252,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         .type("text/html")
         .send(
           renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
             title: "Kein Zugriff",
             user: request.currentUser,
             csrfToken: request.csrfToken,
@@ -1349,6 +1360,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: page.title,
         body,
         user: request.currentUser,
@@ -1505,6 +1517,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Neue Seite",
         body,
         user: request.currentUser,
@@ -1747,6 +1760,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: `Bearbeiten: ${page.title}`,
         body,
         user: request.currentUser,
@@ -2028,6 +2042,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         .type("text/html")
         .send(
           renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
             title: "Historie nicht gefunden",
             user: request.currentUser,
             csrfToken: request.csrfToken,
@@ -2042,6 +2057,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         .type("text/html")
         .send(
           renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
             title: "Kein Zugriff",
             user: request.currentUser,
             csrfToken: request.csrfToken,
@@ -2056,6 +2072,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         .type("text/html")
         .send(
           renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
             title: "Kein Zugriff",
             user: request.currentUser,
             csrfToken: request.csrfToken,
@@ -2133,6 +2150,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Versionshistorie",
         body,
         user: request.currentUser,
@@ -2159,6 +2177,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         .type("text/html")
         .send(
           renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
             title: "Kein Zugriff",
             user: request.currentUser,
             csrfToken: request.csrfToken,
@@ -2173,6 +2192,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         .type("text/html")
         .send(
           renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
             title: "Kein Zugriff",
             user: request.currentUser,
             csrfToken: request.csrfToken,
@@ -2190,6 +2210,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         .type("text/html")
         .send(
           renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
             title: "Version nicht gefunden",
             user: request.currentUser,
             csrfToken: request.csrfToken,
@@ -2246,6 +2267,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Version ansehen",
         body,
         user: request.currentUser,
@@ -2273,6 +2295,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         .type("text/html")
         .send(
           renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
             title: "Kein Zugriff",
             user: request.currentUser,
             csrfToken: request.csrfToken,
@@ -2287,6 +2310,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         .type("text/html")
         .send(
           renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
             title: "Kein Zugriff",
             user: request.currentUser,
             csrfToken: request.csrfToken,
@@ -2306,6 +2330,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         .type("text/html")
         .send(
           renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
             title: "Version nicht gefunden",
             user: request.currentUser,
             csrfToken: request.csrfToken,
@@ -2364,6 +2389,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         .type("text/html")
         .send(
           renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
             title: "Vergleich nicht möglich",
             user: request.currentUser,
             csrfToken: request.csrfToken,
@@ -2434,6 +2460,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Versions-Diff",
         body,
         user: request.currentUser,
@@ -2738,7 +2765,8 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
           selectedCategoryId,
           selectedAuthor,
           selectedTimeframe,
-          selectedScope
+          selectedScope,
+          hasAnyFilter
         })}
         ${renderPager("/search", paged.page, paged.totalPages, {
           q,
@@ -2753,12 +2781,13 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
 
     return reply.type("text/html").send(
       renderLayout({
+        canonicalPath: (request.url.split("?")[0] ?? "/"),
         title: "Suche",
         body,
         user: request.currentUser,
         csrfToken: request.csrfToken,
         searchQuery: q,
-        scripts: ["/home-search.js?v=4"]
+        scripts: ["/home-search.js?v=5"]
       })
     );
   });

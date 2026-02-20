@@ -51,3 +51,20 @@
 - Perf: < 1 ms DB-Overhead; kein neues Framework, kein neuer Service
 
 **Nächste Schritte:** Admin-Theme-Edit im User-Edit-Dialog
+
+## Manuelle QA-Checkliste – UI-Polish (20.02.2026)
+
+- [ ] Tab-Fokus sichtbar auf interaktiven Elementen (`:focus-visible` in Wiki + Admin)
+- [ ] Dark/Light korrekt (Default Dark, System-Preference respektiert, Toggle persistent)
+- [ ] Mobile Breakpoints geprüft (Header/Nav, Formulare, Tabellen, Artikelansicht)
+- [ ] Admin-Seiten geprüft (Users, SEO, Backups, weitere Admin-Module)
+- [ ] Artikelansicht geprüft (Typografie, TOC, Tabellen, Code-Blöcke, Abstände)
+
+## Manuelle QA-Checkliste – A11y/SEO (20.02.2026)
+
+- [ ] Jede Seite hat eindeutigen `<title>`, `meta description` und `canonical` ohne Querystring
+- [ ] Header-Suche, Admin-Formulare und Toggle-Buttons sind per Keyboard vollständig bedienbar
+- [ ] Icon-only Buttons/Links haben `aria-label` und `title`
+- [ ] Fokusindikator (`:focus-visible`) ist auf allen Kernseiten klar sichtbar
+- [ ] Touch-Targets auf Mobile sind ausreichend groß (mind. 44px in Navigation/Buttons)
+- [ ] Artikel „Zwei Instanzen …“ ist auf generische Domains/Pfade geprüft und technisch konsistent
