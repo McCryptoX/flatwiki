@@ -17,6 +17,7 @@ import {
 import { writeAuditLog } from "../lib/audit.js";
 import { findCategoryById, getDefaultCategory, listCategories } from "../lib/categoryStore.js";
 import { createPageComment, deleteCommentsForPage, deletePageComment, listPageComments } from "../lib/commentStore.js";
+import { etagWikiPage } from "../lib/atomicIntegrityStore.js";
 import { listGroupIdsForUser, listGroups } from "../lib/groupStore.js";
 import { createNotification, deleteNotificationsForPage } from "../lib/notificationStore.js";
 import { listTemplates } from "../lib/templateStore.js";
@@ -1259,6 +1260,24 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
             body: `<section class="content-wrap"><h1>Kein Zugriff</h1><p>Du hast keine Berechtigung für diesen Artikel.</p></section>`
           })
         );
+    }
+
+    // ── ETag / HTTP-Caching ───────────────────────────────────────────────────
+    try {
+      const { etag: rawEtag } = await etagWikiPage(normalizedSlug);
+      const etag = `W/"${rawEtag}"`;
+      reply.header("ETag", etag);
+      reply.header("Cache-Control", "private, no-cache");
+      const ifNoneMatch = request.headers["if-none-match"];
+      if (ifNoneMatch) {
+        const value = Array.isArray(ifNoneMatch) ? ifNoneMatch.join(",") : ifNoneMatch;
+        const candidates = value.split(",").map((s) => s.trim());
+        if (candidates.includes("*") || candidates.includes(etag)) {
+          return reply.code(304).send();
+        }
+      }
+    } catch {
+      // Slug nicht ETag-kompatibel (z.B. Unterstriche) → kein ETag, normal weiter
     }
 
     try {
