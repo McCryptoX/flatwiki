@@ -7,29 +7,6 @@
   const article = document.querySelector(".article-page");
   if (!(article instanceof HTMLElement)) return;
 
-  const ensureBreadcrumbs = () => {
-    if (article.querySelector(".article-breadcrumbs")) return;
-    const header = article.querySelector(".article-header");
-    const titleEl = header && header.querySelector("h1");
-    if (!(header instanceof HTMLElement) || !(titleEl instanceof HTMLElement)) return;
-
-    let category = "";
-    const pills = header.querySelectorAll(".article-meta-row .meta-pill");
-    for (const pill of pills) {
-      const text = (pill.textContent || "").trim();
-      if (text.startsWith("Kategorie:")) {
-        category = text.replace("Kategorie:", "").trim();
-        break;
-      }
-    }
-
-    const nav = document.createElement("nav");
-    nav.className = "article-breadcrumbs";
-    nav.setAttribute("aria-label", "Breadcrumb");
-    nav.innerHTML = `<a href="/">Home</a>${category ? `<span aria-hidden="true">›</span><a href="/toc">${category}</a>` : ""}<span aria-hidden="true">›</span><span>${titleEl.textContent || "Artikel"}</span>`;
-    header.insertBefore(nav, titleEl);
-  };
-
   const slugify = (value) =>
     String(value || "")
       .toLowerCase()
@@ -167,7 +144,6 @@
   let attempt = 0;
   const init = () => {
     attempt += 1;
-    ensureBreadcrumbs();
     const toc = buildToc();
     if (toc) {
       setupActiveState(toc.tocRoot, toc.entries);

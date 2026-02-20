@@ -283,6 +283,36 @@ const renderPager = (
   `;
 };
 
+const formatBreadcrumbLabel = (segment: string): string => {
+  let decoded = segment;
+  try {
+    decoded = decodeURIComponent(segment);
+  } catch {
+    decoded = segment;
+  }
+  const plain = decoded.replace(/[-_]+/g, " ").trim();
+  return plain.length > 0 ? plain : decoded;
+};
+
+const renderSlugBreadcrumbs = (slug: string): string => {
+  const segments = slug
+    .split("/")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+
+  if (segments.length <= 1) return "";
+
+  const categorySegments = segments.slice(0, -1);
+  const links = categorySegments
+    .map((segment, index) => {
+      const path = segments.slice(0, index + 1).join("/");
+      return `<a href="/wiki/${encodeURIComponent(path)}">${escapeHtml(formatBreadcrumbLabel(segment))}</a>`;
+    })
+    .join('<span aria-hidden="true">›</span>');
+
+  return `<nav class="article-breadcrumbs" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">›</span>${links}</nav>`;
+};
+
 const formatHistoryReason = (reason: string): string => {
   if (reason === "delete") return "Löschen";
   if (reason === "restore-backup") return "Restore-Sicherung";
@@ -1239,11 +1269,13 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
             ? "nicht prüfbar"
             : "fehlerhaft";
     const visibilityLabel = page.visibility === "restricted" ? "eingeschränkt" : "alle";
+    const breadcrumbs = renderSlugBreadcrumbs(page.slug);
     const body = `
       <article class="wiki-page article-page ${articleToc ? "article-layout" : ""}">
         ${articleToc}
         <div class="article-main">
           <header class="article-header">
+            ${breadcrumbs}
             <h1>${escapeHtml(page.title)}</h1>
             <div class="card-meta article-meta-row">
               <span class="meta-pill">Kategorie: ${escapeHtml(page.categoryName)}</span>
@@ -1315,7 +1347,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         csrfToken: request.csrfToken,
         notice: readSingle(asObject(request.query).notice),
         error: readSingle(asObject(request.query).error),
-        scripts: ["/js/main.js?v=1", ...(articleToc ? ["/article-toc.js?v=2"] : [])]
+        scripts: articleToc ? ["/article-toc.js?v=4"] : undefined
       })
     );
   });
