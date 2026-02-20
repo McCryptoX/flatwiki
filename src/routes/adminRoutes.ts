@@ -1195,7 +1195,7 @@ const renderUiModeManagement = (
   </section>
 `;
 
-type AdminNavKey =
+export type AdminNavKey =
   | "users"
   | "ui"
   | "media"
@@ -1241,7 +1241,7 @@ const renderAdminNav = (active: AdminNavKey): string => `
   </nav>
 `;
 
-const renderAdminHeader = (input: {
+export const renderAdminHeader = (input: {
   title: string;
   description: string;
   active: AdminNavKey;
