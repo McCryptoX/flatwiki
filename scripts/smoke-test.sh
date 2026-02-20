@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUNTIME_DIR="$(mktemp -d)"
@@ -36,6 +36,18 @@ cleanup() {
   rm -rf "${RUNTIME_DIR}"
 }
 trap cleanup EXIT INT TERM
+
+on_error() {
+  local line_no="$1"
+  local cmd="${2:-unknown}"
+  echo "Fehler: smoke-test.sh ist in Zeile ${line_no} fehlgeschlagen: ${cmd}" >&2
+  if [[ -f "${APP_LOG}" ]]; then
+    echo "--- App-Log (letzte 120 Zeilen) ---" >&2
+    tail -n 120 "${APP_LOG}" >&2 || true
+    echo "--- Ende App-Log ---" >&2
+  fi
+}
+trap 'on_error "${LINENO}" "${BASH_COMMAND}"' ERR
 
 json_get() {
   local key_path="$1"
