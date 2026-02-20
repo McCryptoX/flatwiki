@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FlatWiki Startseiten-Prototypen</title>
+    <style>
+      :root {
+        --bg: #f4f7f8;
+        --card: #ffffff;
+        --line: #ced8dc;
+        --ink: #1f2933;
+        --muted: #52606d;
+        --accent: #0f766e;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Avenir Next", "Segoe UI", "Trebuchet MS", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(900px 420px at 15% -5%, #d7efea 0, transparent 70%),
+          radial-gradient(720px 360px at 95% 8%, #fbe8bf 0, transparent 62%),
+          var(--bg);
+      }
+
+      main {
+        max-width: 920px;
+        margin: 0 auto;
+        padding: 3.5rem 1.2rem 2.5rem;
+      }
+
+      .headline {
+        margin-bottom: 1rem;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(1.6rem, 2.6vw, 2.5rem);
+        font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+      }
+
+      p {
+        color: var(--muted);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 0.9rem;
+        margin-top: 1.2rem;
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 1rem 1rem 1.1rem;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+      }
+
+      h2 {
+        margin: 0 0 0.45rem;
+        font-size: 1.05rem;
+      }
+
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+
+      a:hover {
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="headline">
+        <h1>FlatWiki Startseiten-Prototypen</h1>
+        <p>Isolierte Entwuerfe. Kein Eingriff in bestehende Wiki-Routen oder Styles.</p>
+      </div>
+      <div class="grid">
+        <article class="card">
+          <h2>Prototyp A: Search First</h2>
+          <p>Zentrierte Suche wie Suchmaschine plus kompakte Arbeitsfläche darunter.</p>
+          <p><a href="./prototype-a-search-first.html">Öffnen</a></p>
+        </article>
+        <article class="card">
+          <h2>Prototyp B: Editorial Dashboard</h2>
+          <p>Dashboard-Start mit Aktivität, Kategorien und sichtbaren letzten Änderungen.</p>
+          <p><a href="./prototype-b-editorial.html">Öffnen</a></p>
+        </article>
+      </div>
+    </main>
+  </body>
+</html>

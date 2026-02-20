@@ -1,0 +1,735 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FlatWiki Prototyp B - Editorial Dashboard</title>
+    <style>
+      :root {
+        --ink: #172338;
+        --muted: #5b6678;
+        --line: #d7dde7;
+        --card: #ffffff;
+        --surface: #f6f8fc;
+        --accent: #1e5fa8;
+        --accent-2: #0d7665;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        font-family: "Source Sans 3", "Segoe UI", "Trebuchet MS", sans-serif;
+        background:
+          radial-gradient(540px 280px at 8% 12%, #e8efff 0, transparent 62%),
+          radial-gradient(620px 300px at 95% 2%, #f9e8bf 0, transparent 55%),
+          linear-gradient(180deg, #f7f9fc 0%, #fbfcfd 100%);
+      }
+
+      .topbar {
+        border-bottom: 1px solid #d5dce9;
+        background: rgba(250, 252, 255, 0.92);
+        backdrop-filter: blur(7px);
+        position: sticky;
+        top: 0;
+        z-index: 2;
+      }
+
+      .topbar-inner {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 0.95rem 1rem;
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: center;
+      }
+
+      .logo {
+        display: grid;
+        gap: 0.1rem;
+      }
+
+      .logo strong {
+        font-family: "Baskerville", "Palatino Linotype", "Book Antiqua", serif;
+        font-size: 1.5rem;
+      }
+
+      .logo span {
+        color: var(--muted);
+        font-size: 0.83rem;
+      }
+
+      .topnav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+
+      .topnav a {
+        text-decoration: none;
+        color: #243a56;
+        border: 1px solid #cad5e9;
+        background: #f8fbff;
+        border-radius: 10px;
+        padding: 0.42rem 0.7rem;
+        font-size: 0.9rem;
+      }
+
+      .shell {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 1.05rem 1rem 2rem;
+      }
+
+      .hero {
+        border: 1px solid #d3dbe9;
+        border-radius: 22px;
+        background:
+          linear-gradient(130deg, rgba(210, 226, 255, 0.48) 0%, rgba(244, 248, 255, 0.7) 35%, rgba(233, 247, 241, 0.7) 100%),
+          #fff;
+        padding: clamp(1.2rem, 2.7vw, 2.2rem);
+        box-shadow: 0 15px 32px rgba(23, 35, 56, 0.08);
+      }
+
+      .hero-headline {
+        display: grid;
+        gap: 0.35rem;
+        text-align: center;
+      }
+
+      .hero-headline h1 {
+        margin: 0;
+        font-family: "Baskerville", "Palatino Linotype", "Book Antiqua", serif;
+        font-size: clamp(1.6rem, 3.2vw, 2.7rem);
+      }
+
+      .hero-headline p {
+        margin: 0;
+        color: #596b80;
+      }
+
+      .search-stage {
+        max-width: 840px;
+        margin: 0.92rem auto 0;
+        position: relative;
+      }
+
+      .search-form {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 0.52rem;
+      }
+
+      .search-form input {
+        font: inherit;
+        font-size: 1rem;
+        border: 1px solid #b8c8e3;
+        border-radius: 16px;
+        background: #fff;
+        padding: 0.88rem 0.95rem;
+        outline: none;
+      }
+
+      .search-form input:focus {
+        border-color: #397dc4;
+        box-shadow: 0 0 0 4px rgba(30, 95, 168, 0.13);
+      }
+
+      .search-form button {
+        font: inherit;
+        font-weight: 700;
+        border: 0;
+        border-radius: 16px;
+        background: linear-gradient(180deg, #1e5fa8 0%, #1a4e89 100%);
+        color: #fff;
+        padding: 0.88rem 1rem;
+        cursor: pointer;
+      }
+
+      .search-suggest {
+        position: absolute;
+        top: calc(100% + 0.42rem);
+        left: 0;
+        right: 0;
+        border: 1px solid #c8d5eb;
+        border-radius: 14px;
+        background: #fff;
+        box-shadow: 0 18px 26px rgba(23, 35, 56, 0.15);
+        overflow: hidden;
+        z-index: 3;
+      }
+
+      .suggest-row {
+        width: 100%;
+        border: 0;
+        border-bottom: 1px solid #e8edf8;
+        background: #fff;
+        color: #1f3552;
+        text-align: left;
+        font: inherit;
+        padding: 0.7rem 0.82rem;
+        cursor: pointer;
+      }
+
+      .suggest-row:last-child {
+        border-bottom: 0;
+      }
+
+      .suggest-row:hover,
+      .suggest-row:focus-visible {
+        outline: none;
+        background: #edf4ff;
+      }
+
+      .hero-actions {
+        margin-top: 0.92rem;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.45rem;
+      }
+
+      .hero-actions a,
+      .hero-actions button {
+        text-decoration: none;
+        border-radius: 999px;
+        border: 1px solid #bfd0ec;
+        background: #f5f9ff;
+        color: #2a4567;
+        padding: 0.38rem 0.75rem;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .hero-footnote {
+        text-align: center;
+        margin: 0.7rem 0 0;
+        color: #5b6f87;
+        font-size: 0.86rem;
+      }
+
+      .hero-footnote a {
+        color: var(--accent);
+      }
+
+      .result-box {
+        margin-top: 0.9rem;
+        border: 1px solid #d4ddeb;
+        border-radius: 14px;
+        background: #fff;
+        padding: 0.78rem;
+      }
+
+      .result-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.8rem;
+        align-items: baseline;
+      }
+
+      .result-head h2 {
+        margin: 0;
+        font-size: 1.05rem;
+      }
+
+      .result-head small {
+        color: var(--muted);
+      }
+
+      .result-list {
+        list-style: none;
+        margin: 0.55rem 0 0;
+        padding: 0;
+        display: grid;
+        gap: 0.45rem;
+      }
+
+      .result-list li {
+        border: 1px solid #e4eaf4;
+        border-radius: 11px;
+        padding: 0.58rem 0.66rem;
+        background: #fff;
+      }
+
+      .result-list a {
+        color: #1e3552;
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      .result-meta {
+        color: var(--muted);
+        font-size: 0.82rem;
+        margin: 0.2rem 0 0.28rem;
+      }
+
+      .result-text {
+        margin: 0;
+        color: #4f6177;
+        font-size: 0.9rem;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 0.95fr 1.45fr 0.95fr;
+        gap: 0.82rem;
+        margin-top: 0.95rem;
+      }
+
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--card);
+        box-shadow: 0 9px 24px rgba(23, 35, 56, 0.06);
+        padding: 0.86rem;
+      }
+
+      .card h2 {
+        margin: 0 0 0.52rem;
+        font-size: 1rem;
+      }
+
+      .toc-list,
+      .quick-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 0.38rem;
+      }
+
+      .toc-list a,
+      .quick-list a {
+        text-decoration: none;
+        border: 1px solid #dde5f1;
+        border-radius: 10px;
+        background: #f9fbff;
+        padding: 0.43rem 0.55rem;
+        color: #2a4567;
+      }
+
+      .recent-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 0.45rem;
+      }
+
+      .recent-list li {
+        border: 1px solid #e0e6f1;
+        border-radius: 11px;
+        background: #fff;
+        padding: 0.56rem 0.62rem;
+      }
+
+      .recent-title {
+        font-weight: 700;
+        color: #1d3047;
+      }
+
+      .recent-preview {
+        margin: 0.22rem 0;
+        color: #4f6177;
+        line-height: 1.35;
+        font-size: 0.9rem;
+      }
+
+      .recent-meta {
+        color: var(--muted);
+        font-size: 0.81rem;
+      }
+
+      .stat-grid {
+        display: grid;
+        gap: 0.46rem;
+      }
+
+      .stat {
+        border: 1px solid #dfe7f4;
+        border-radius: 11px;
+        background: #fbfcff;
+        padding: 0.55rem 0.62rem;
+      }
+
+      .stat strong {
+        display: block;
+        font-size: 1.08rem;
+        color: #23466b;
+      }
+
+      .stat span {
+        color: var(--muted);
+        font-size: 0.84rem;
+      }
+
+      .empty {
+        color: var(--muted);
+        border: 1px dashed #ced8e9;
+        border-radius: 11px;
+        padding: 0.74rem;
+        background: #fafcff;
+      }
+
+      @media (max-width: 1060px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .topbar-inner {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .search-form {
+          grid-template-columns: 1fr;
+        }
+
+        .search-form button {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="logo">
+          <strong>FlatWiki</strong>
+          <span>Prototyp B - Editorial Dashboard</span>
+        </div>
+        <nav class="topnav" aria-label="Navigation">
+          <a href="#">Startseite</a>
+          <a href="#">Inhaltsverzeichnis</a>
+          <a href="#">Suche</a>
+          <a href="#">Admin</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section class="hero">
+        <div class="hero-headline">
+          <h1>Wissen zuerst finden, dann vertiefen</h1>
+          <p>
+            Dashboard mit Suchfokus in der Mitte. Darunter klare Bloecke fuer letzte Aenderungen, Kategorien und
+            Schnellzugriffe.
+          </p>
+        </div>
+
+        <div class="search-stage">
+          <form id="searchForm" class="search-form" action="/search" method="get">
+            <input id="queryInput" type="search" name="q" autocomplete="off" placeholder="Thema, Tag oder Begriff eingeben ..." />
+            <button type="submit">Artikel suchen</button>
+          </form>
+          <div id="suggestBox" class="search-suggest" hidden></div>
+        </div>
+
+        <div class="hero-actions">
+          <button type="button" data-preset="howto">howto</button>
+          <button type="button" data-preset="backup">backup</button>
+          <button type="button" data-preset="sicherheit">sicherheit</button>
+          <button type="button" data-preset="gruppen">gruppen</button>
+          <a href="#">Neue Seite</a>
+          <a href="#">Alle Aenderungen</a>
+        </div>
+
+        <p class="hero-footnote">
+          Demo-Suche in dieser Datei.
+          <a id="realSearch" href="/search" target="_blank" rel="noopener">Im echten FlatWiki suchen</a>
+        </p>
+
+        <section id="resultBox" class="result-box" hidden>
+          <div class="result-head">
+            <h2 id="resultHeadline">Treffer</h2>
+            <small id="resultCounter">0 Treffer</small>
+          </div>
+          <ul id="resultList" class="result-list"></ul>
+        </section>
+      </section>
+
+      <section class="layout">
+        <article class="card">
+          <h2>Inhaltsverzeichnis Schnellindex</h2>
+          <ul class="toc-list">
+            <li><a href="#">A-C</a></li>
+            <li><a href="#">D-H</a></li>
+            <li><a href="#">I-M</a></li>
+            <li><a href="#">N-S</a></li>
+            <li><a href="#">T-Z</a></li>
+          </ul>
+        </article>
+
+        <article class="card">
+          <h2>Letzte Beitraege</h2>
+          <ul class="recent-list">
+            <li>
+              <div class="recent-title">FlatWiki - Komplette Nutzung</div>
+              <p class="recent-preview">Aktualisierte Admin-Abschnitte fuer Benutzerverwaltung und Backup-Restore.</p>
+              <div class="recent-meta">Heute 08:12 - Allgemein - von administrator</div>
+            </li>
+            <li>
+              <div class="recent-title">Markdown-Formatierung HowTo</div>
+              <p class="recent-preview">Neue Beispiele fuer Tabellen, interne Links und Syntaxhighlighting.</p>
+              <div class="recent-meta">Heute 07:37 - HowTo - von redaktion</div>
+            </li>
+            <li>
+              <div class="recent-title">Backup Wiederherstellung</div>
+              <p class="recent-preview">Pruefablauf erweitert: Integritaetscheck vor produktivem Restore.</p>
+              <div class="recent-meta">Gestern 17:43 - Betrieb - von adminops</div>
+            </li>
+          </ul>
+        </article>
+
+        <aside class="card">
+          <h2>Ueberblick</h2>
+          <div class="stat-grid">
+            <div class="stat">
+              <strong>142</strong>
+              <span>Artikel gesamt</span>
+            </div>
+            <div class="stat">
+              <strong>9</strong>
+              <span>Aenderungen heute</span>
+            </div>
+            <div class="stat">
+              <strong>4</strong>
+              <span>Kategorien aktiv</span>
+            </div>
+            <div class="stat">
+              <strong>3</strong>
+              <span>Entwuerfe offen</span>
+            </div>
+          </div>
+          <h2 style="margin-top:0.8rem;">Schnellzugriffe</h2>
+          <ul class="quick-list">
+            <li><a href="#">Neue Seite erstellen</a></li>
+            <li><a href="#">Vorlagen verwalten</a></li>
+            <li><a href="#">Defekte Links pruefen</a></li>
+            <li><a href="#">Backup starten</a></li>
+          </ul>
+        </aside>
+      </section>
+    </main>
+
+    <script>
+      const PAGES = [
+        {
+          title: "Home",
+          slug: "home",
+          category: "Allgemein",
+          author: "administrator",
+          updatedAt: "2026-02-15T12:27:00Z",
+          tags: ["start"],
+          excerpt: "Einstieg in FlatWiki, Suche, Inhaltsverzeichnis und Navigation.",
+          content: "Startseite und Arbeitslogik fuer neue Nutzer."
+        },
+        {
+          title: "FlatWiki - Komplette Nutzung",
+          slug: "flatwiki-komplette-nutzung",
+          category: "Allgemein",
+          author: "administrator",
+          updatedAt: "2026-02-19T08:12:00Z",
+          tags: ["handbuch", "anleitung", "admin", "benutzer"],
+          excerpt: "Komplette Anleitung fuer den gesamten Ablauf im Wiki.",
+          content: "Login, Seitenpflege, Rollenmodell, Adminseiten, Backups."
+        },
+        {
+          title: "Markdown-Formatierung HowTo",
+          slug: "markdown-formatierung-howto",
+          category: "HowTo",
+          author: "redaktion",
+          updatedAt: "2026-02-19T07:37:00Z",
+          tags: ["howto", "markdown", "editor"],
+          excerpt: "Leitfaden fuer Ueberschriften, Tabellen, Listen und Codeblocks.",
+          content: "Praxisbeispiele fuer lesbare Wiki-Artikel."
+        },
+        {
+          title: "Backup Wiederherstellung",
+          slug: "backup-wiederherstellung",
+          category: "Betrieb",
+          author: "adminops",
+          updatedAt: "2026-02-18T17:43:00Z",
+          tags: ["backup", "restore", "betrieb"],
+          excerpt: "Restore-Wizard mit Verifikation und Fail-safe Schritten.",
+          content: "Backup-Upload, Entschluesselung, Integritaetscheck."
+        },
+        {
+          title: "SSL Checkliste",
+          slug: "ssl-checkliste",
+          category: "Sicherheit",
+          author: "administrator",
+          updatedAt: "2026-02-18T13:11:00Z",
+          tags: ["tls", "https", "sicherheit"],
+          excerpt: "Checkpunkte fuer HTTPS, Header und Proxy-Konfiguration.",
+          content: "TLS setup, Zertifikate, Forwarded header, admin status."
+        },
+        {
+          title: "Gruppen und Rechte",
+          slug: "gruppen-und-rechte",
+          category: "Sicherheit",
+          author: "redaktion",
+          updatedAt: "2026-02-17T10:10:00Z",
+          tags: ["gruppen", "rechte", "zugriff"],
+          excerpt: "Berechtigungen fuer Team, Gruppen und sensible Inhalte.",
+          content: "Rollenmodell und Zugriff pro Artikel."
+        }
+      ];
+
+      const queryInput = document.querySelector("#queryInput");
+      const searchForm = document.querySelector("#searchForm");
+      const suggestBox = document.querySelector("#suggestBox");
+      const resultBox = document.querySelector("#resultBox");
+      const resultList = document.querySelector("#resultList");
+      const resultHeadline = document.querySelector("#resultHeadline");
+      const resultCounter = document.querySelector("#resultCounter");
+      const realSearch = document.querySelector("#realSearch");
+      const presets = Array.from(document.querySelectorAll("[data-preset]"));
+
+      const escapeHtml = (value) =>
+        value
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+
+      const tokenize = (query) =>
+        query
+          .trim()
+          .toLowerCase()
+          .split(/\s+/)
+          .filter(Boolean);
+
+      const scorePage = (page, tokens) => {
+        const title = page.title.toLowerCase();
+        const haystack = `${page.category} ${page.author} ${page.tags.join(" ")} ${page.excerpt} ${page.content}`.toLowerCase();
+        let score = 0;
+        for (const token of tokens) {
+          if (title.startsWith(token)) score += 10;
+          else if (title.includes(token)) score += 7;
+          if (haystack.includes(token)) score += 3;
+        }
+        if (score < 1) return 0;
+        const ageHours = (Date.now() - Date.parse(page.updatedAt)) / 3_600_000;
+        if (Number.isFinite(ageHours) && ageHours < 48) score += 2;
+        return score;
+      };
+
+      const rankPages = (query) => {
+        const tokens = tokenize(query);
+        if (tokens.length < 1) return [];
+        return PAGES.map((page) => ({ page, score: scorePage(page, tokens) }))
+          .filter((entry) => entry.score > 0)
+          .sort((a, b) => b.score - a.score || Date.parse(b.page.updatedAt) - Date.parse(a.page.updatedAt));
+      };
+
+      const setRealLink = (query) => {
+        const value = query.trim();
+        realSearch.setAttribute("href", value ? `/search?q=${encodeURIComponent(value)}` : "/search");
+      };
+
+      const renderResults = (query, ranked) => {
+        resultBox.hidden = false;
+        resultHeadline.textContent = `Treffer fuer "${query}"`;
+        resultCounter.textContent = `${ranked.length} Treffer`;
+
+        if (ranked.length < 1) {
+          resultList.innerHTML = '<li class="empty">Keine Treffer in der Demo-Datenbasis.</li>';
+          return;
+        }
+
+        resultList.innerHTML = ranked
+          .map(({ page }) => {
+            const meta = `${page.category} - ${new Date(page.updatedAt).toLocaleString("de-DE")} - von ${page.author}`;
+            return `
+              <li>
+                <a href="/wiki/${encodeURIComponent(page.slug)}">${escapeHtml(page.title)}</a>
+                <div class="result-meta">${escapeHtml(meta)}</div>
+                <p class="result-text">${escapeHtml(page.excerpt)}</p>
+              </li>
+            `;
+          })
+          .join("");
+      };
+
+      const hideSuggest = () => {
+        suggestBox.hidden = true;
+        suggestBox.innerHTML = "";
+      };
+
+      const updateSuggest = (query) => {
+        const q = query.trim().toLowerCase();
+        if (q.length < 2) {
+          hideSuggest();
+          return;
+        }
+        const matches = PAGES.filter((page) => {
+          const text = `${page.title} ${page.tags.join(" ")} ${page.category}`.toLowerCase();
+          return text.includes(q);
+        }).slice(0, 6);
+        if (matches.length < 1) {
+          hideSuggest();
+          return;
+        }
+        suggestBox.innerHTML = matches
+          .map(
+            (page) =>
+              `<button class="suggest-row" type="button" data-value="${escapeHtml(page.title)}">${escapeHtml(page.title)} <small>- ${escapeHtml(
+                page.category
+              )}</small></button>`
+          )
+          .join("");
+        suggestBox.hidden = false;
+      };
+
+      searchForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const query = queryInput.value.trim();
+        hideSuggest();
+        setRealLink(query);
+        if (query.length < 1) {
+          resultBox.hidden = true;
+          resultList.innerHTML = "";
+          return;
+        }
+        renderResults(query, rankPages(query));
+      });
+
+      queryInput.addEventListener("input", () => {
+        const query = queryInput.value;
+        setRealLink(query);
+        updateSuggest(query);
+      });
+
+      queryInput.addEventListener("blur", () => {
+        window.setTimeout(hideSuggest, 110);
+      });
+
+      suggestBox.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+        const row = target.closest("[data-value]");
+        if (!(row instanceof HTMLElement)) return;
+        queryInput.value = row.dataset.value || "";
+        searchForm.requestSubmit();
+      });
+
+      presets.forEach((button) => {
+        button.addEventListener("click", () => {
+          const value = button.dataset.preset || "";
+          queryInput.value = value;
+          setRealLink(value);
+          searchForm.requestSubmit();
+        });
+      });
+    </script>
+  </body>
+</html>

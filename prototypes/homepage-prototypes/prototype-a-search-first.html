@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FlatWiki Prototyp A - Search First</title>
+    <style>
+      :root {
+        --ink: #14212b;
+        --muted: #536471;
+        --line: #cfd9de;
+        --card: #ffffff;
+        --surface: #edf5f6;
+        --accent: #0f766e;
+        --accent-soft: #d8f0eb;
+        --shadow: 0 18px 34px rgba(17, 33, 43, 0.1);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        color: var(--ink);
+        font-family: "Avenir Next", "Segoe UI", "Trebuchet MS", sans-serif;
+        background:
+          radial-gradient(760px 440px at 90% -4%, #bfe9df 0, transparent 66%),
+          radial-gradient(940px 420px at 2% 100%, #f8d79f 0, transparent 60%),
+          linear-gradient(180deg, #f3f7f8 0%, #f7f9fa 100%);
+      }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        backdrop-filter: blur(7px);
+        background: rgba(248, 251, 252, 0.84);
+        border-bottom: 1px solid rgba(182, 201, 207, 0.64);
+      }
+
+      .topbar-inner {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 0.9rem 1rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+      }
+
+      .brand {
+        display: grid;
+        gap: 0.1rem;
+      }
+
+      .brand strong {
+        font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+        font-size: 1.45rem;
+      }
+
+      .brand span {
+        color: var(--muted);
+        font-size: 0.86rem;
+      }
+
+      .nav {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+      }
+
+      .nav a {
+        text-decoration: none;
+        color: #244152;
+        font-size: 0.9rem;
+        border: 1px solid #bed2da;
+        border-radius: 999px;
+        padding: 0.42rem 0.75rem;
+        background: #f8fcfd;
+      }
+
+      .shell {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 1.1rem 1rem 2rem;
+      }
+
+      .hero {
+        background: linear-gradient(145deg, #e6f4f1 0%, #f6f0df 60%, #fff6e8 100%);
+        border: 1px solid rgba(182, 201, 207, 0.8);
+        border-radius: 26px;
+        box-shadow: var(--shadow);
+        padding: clamp(1.4rem, 3vw, 2.3rem);
+        text-align: center;
+      }
+
+      .hero-badge {
+        display: inline-block;
+        border-radius: 999px;
+        border: 1px solid #b5d9d2;
+        background: rgba(216, 240, 235, 0.9);
+        padding: 0.22rem 0.65rem;
+        font-size: 0.79rem;
+        color: #14564f;
+        margin-bottom: 0.72rem;
+      }
+
+      .hero h1 {
+        margin: 0;
+        font-size: clamp(1.6rem, 3.5vw, 2.9rem);
+        font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+      }
+
+      .hero p {
+        margin: 0.65rem auto 0;
+        max-width: 690px;
+        color: #4e636f;
+      }
+
+      .search-wrap {
+        max-width: 760px;
+        margin: 1rem auto 0;
+        position: relative;
+      }
+
+      .search-form {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 0.52rem;
+      }
+
+      .search-form input {
+        font: inherit;
+        font-size: 1rem;
+        border-radius: 999px;
+        border: 1px solid #adcad3;
+        background: #fff;
+        padding: 0.88rem 1rem;
+        outline: none;
+      }
+
+      .search-form input:focus {
+        border-color: #4ea398;
+        box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.14);
+      }
+
+      .search-form button {
+        font: inherit;
+        font-weight: 700;
+        border: 0;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #0f766e, #177f75);
+        color: #fff;
+        padding: 0.88rem 1.15rem;
+        cursor: pointer;
+      }
+
+      .suggestions {
+        position: absolute;
+        top: calc(100% + 0.45rem);
+        left: 0;
+        right: 0;
+        z-index: 3;
+        border: 1px solid #bcd4db;
+        border-radius: 14px;
+        background: #ffffff;
+        box-shadow: 0 18px 32px rgba(20, 33, 43, 0.16);
+        text-align: left;
+        overflow: hidden;
+      }
+
+      .suggestion-item {
+        width: 100%;
+        border: 0;
+        border-bottom: 1px solid #edf2f4;
+        background: #fff;
+        color: #203542;
+        text-align: left;
+        font: inherit;
+        padding: 0.7rem 0.85rem;
+        cursor: pointer;
+      }
+
+      .suggestion-item:last-child {
+        border-bottom: 0;
+      }
+
+      .suggestion-item:hover,
+      .suggestion-item:focus-visible {
+        background: #ecf6f4;
+        outline: none;
+      }
+
+      .chip-row {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        margin-top: 0.95rem;
+      }
+
+      .chip-row button {
+        font: inherit;
+        border: 1px solid #b2d6cf;
+        border-radius: 999px;
+        background: #f5fcfa;
+        color: #1d5a53;
+        padding: 0.32rem 0.72rem;
+        cursor: pointer;
+      }
+
+      .hero-note {
+        margin-top: 0.8rem;
+        font-size: 0.86rem;
+        color: #506774;
+      }
+
+      .hero-note a {
+        color: #0f766e;
+      }
+
+      .workspace-grid {
+        display: grid;
+        gap: 0.85rem;
+        grid-template-columns: 1.5fr 1fr 1fr;
+        margin-top: 1rem;
+      }
+
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 0.95rem;
+        box-shadow: 0 8px 22px rgba(21, 32, 39, 0.06);
+      }
+
+      .panel h2 {
+        margin: 0 0 0.55rem;
+        font-size: 1.04rem;
+      }
+
+      .activity-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 0.45rem;
+      }
+
+      .activity-list li {
+        border: 1px solid #e0e8ec;
+        border-radius: 12px;
+        padding: 0.56rem 0.62rem;
+        background: #fdfefe;
+      }
+
+      .activity-list a {
+        color: #1f3340;
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      .activity-meta {
+        color: var(--muted);
+        font-size: 0.83rem;
+        margin-top: 0.18rem;
+      }
+
+      .action-list,
+      .category-list {
+        display: grid;
+        gap: 0.45rem;
+      }
+
+      .action-list a,
+      .category-list a {
+        border: 1px solid #d6e2e6;
+        border-radius: 11px;
+        background: #f8fbfd;
+        padding: 0.52rem 0.62rem;
+        color: #294353;
+        text-decoration: none;
+      }
+
+      .action-list a:hover,
+      .category-list a:hover {
+        background: #edf5f8;
+      }
+
+      .result-panel {
+        margin-top: 1rem;
+        border: 1px solid #b9ced6;
+        border-radius: 16px;
+        background: #ffffff;
+        box-shadow: 0 10px 24px rgba(18, 31, 42, 0.08);
+        padding: 0.92rem;
+      }
+
+      .result-headline {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: baseline;
+      }
+
+      .result-headline h2 {
+        margin: 0;
+        font-size: 1.1rem;
+      }
+
+      .result-headline small {
+        color: var(--muted);
+      }
+
+      .result-list {
+        list-style: none;
+        margin: 0.65rem 0 0;
+        padding: 0;
+        display: grid;
+        gap: 0.52rem;
+      }
+
+      .result-item {
+        border: 1px solid #dee8ec;
+        border-radius: 12px;
+        padding: 0.66rem 0.74rem;
+        background: #fff;
+      }
+
+      .result-item a {
+        color: #1a2f3d;
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      .result-meta {
+        color: var(--muted);
+        font-size: 0.82rem;
+        margin: 0.15rem 0 0.3rem;
+      }
+
+      .result-snippet {
+        margin: 0;
+        color: #455966;
+        font-size: 0.91rem;
+        line-height: 1.35;
+      }
+
+      .empty-result {
+        border: 1px dashed #c7d6dc;
+        border-radius: 12px;
+        padding: 0.8rem;
+        color: var(--muted);
+        background: #f9fcfd;
+      }
+
+      @media (max-width: 980px) {
+        .workspace-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 620px) {
+        .topbar-inner {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .search-form {
+          grid-template-columns: 1fr;
+        }
+
+        .search-form button {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <strong>FlatWiki</strong>
+          <span>Prototyp A - Search First</span>
+        </div>
+        <nav class="nav" aria-label="Schnellnavigation">
+          <a href="#">Inhaltsverzeichnis</a>
+          <a href="#">Neue Seite</a>
+          <a href="#">Letzte Änderungen</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="shell">
+      <section class="hero">
+        <div class="hero-badge">Startseite als Suchmaschine</div>
+        <h1>Finde Wissen in Sekunden</h1>
+        <p>
+          Suche zuerst, entscheide danach. Die Startseite fokussiert auf ein großes Suchfeld in der Mitte
+          und zeigt darunter sofort die wichtigsten Arbeitsbereiche.
+        </p>
+
+        <div class="search-wrap">
+          <form id="searchForm" class="search-form" action="/search" method="get">
+            <input
+              id="searchInput"
+              type="search"
+              name="q"
+              autocomplete="off"
+              placeholder="Suche in Artikeln, Tags, Kategorien ..."
+              aria-label="Wiki durchsuchen"
+            />
+            <button type="submit">Suchen</button>
+          </form>
+          <div id="suggestionBox" class="suggestions" hidden></div>
+        </div>
+
+        <div class="chip-row" aria-label="Schnellsuche">
+          <button type="button" data-chip="start">#start</button>
+          <button type="button" data-chip="howto">#howto</button>
+          <button type="button" data-chip="admin">#admin</button>
+          <button type="button" data-chip="sicherheit">sicherheit</button>
+          <button type="button" data-chip="backup">backup</button>
+        </div>
+
+        <p class="hero-note">
+          Demo-Suche läuft lokal in dieser Datei.
+          <a id="realSearchLink" href="/search" target="_blank" rel="noopener">Im echten Wiki suchen</a>
+        </p>
+      </section>
+
+      <section class="workspace-grid" aria-label="Arbeitsbereiche">
+        <article class="panel">
+          <h2>Letzte Änderungen</h2>
+          <ul class="activity-list">
+            <li>
+              <a href="#">FlatWiki - Komplette Nutzung</a>
+              <div class="activity-meta">Heute, 08:12 - Kategorie: Allgemein - von administrator</div>
+            </li>
+            <li>
+              <a href="#">Markdown-Formatierung HowTo</a>
+              <div class="activity-meta">Heute, 07:37 - Kategorie: Allgemein - von redaktion</div>
+            </li>
+            <li>
+              <a href="#">Backup Wiederherstellung</a>
+              <div class="activity-meta">Gestern, 17:43 - Kategorie: Betrieb - von adminops</div>
+            </li>
+            <li>
+              <a href="#">SSL Checkliste</a>
+              <div class="activity-meta">Gestern, 13:11 - Kategorie: Sicherheit - von administrator</div>
+            </li>
+          </ul>
+        </article>
+
+        <article class="panel">
+          <h2>Schnellaktionen</h2>
+          <div class="action-list">
+            <a href="#">Neue Seite erstellen</a>
+            <a href="#">Mit Vorlage starten</a>
+            <a href="#">Defekte Links prüfen</a>
+            <a href="#">Bildverwaltung öffnen</a>
+          </div>
+        </article>
+
+        <article class="panel">
+          <h2>Kategorien</h2>
+          <div class="category-list">
+            <a href="#">Allgemein</a>
+            <a href="#">HowTo</a>
+            <a href="#">Sicherheit</a>
+            <a href="#">Betrieb</a>
+          </div>
+        </article>
+      </section>
+
+      <section id="resultPanel" class="result-panel" hidden>
+        <div class="result-headline">
+          <h2 id="resultTitle">Treffer</h2>
+          <small id="resultCount">0 Treffer</small>
+        </div>
+        <ul id="resultList" class="result-list"></ul>
+      </section>
+    </main>
+
+    <script>
+      const SAMPLE_PAGES = [
+        {
+          title: "Home",
+          slug: "home",
+          category: "Allgemein",
+          updatedAt: "2026-02-15T12:27:00Z",
+          author: "administrator",
+          tags: ["start"],
+          excerpt: "Willkommen bei FlatWiki. Einstieg in Suche, Inhaltsverzeichnis und neue Seiten.",
+          content: "Startseite, Navigation, erste Schritte, Suche und interne Links."
+        },
+        {
+          title: "FlatWiki - Komplette Nutzung",
+          slug: "flatwiki-komplette-nutzung",
+          category: "Allgemein",
+          updatedAt: "2026-02-19T08:12:00Z",
+          author: "administrator",
+          tags: ["handbuch", "anleitung", "admin", "benutzer"],
+          excerpt: "Vollständige Demo-Anleitung für Benutzer und Admins.",
+          content: "Login, Artikel erstellen, Admin-Bereiche, Rollen, Gruppen und Backup."
+        },
+        {
+          title: "Markdown-Formatierung HowTo",
+          slug: "markdown-formatierung-howto",
+          category: "HowTo",
+          updatedAt: "2026-02-19T07:37:00Z",
+          author: "redaktion",
+          tags: ["howto", "markdown", "editor"],
+          excerpt: "Überschriften, Tabellen, Listen, Code und interne Wiki-Links.",
+          content: "Formatierung in Artikeln inklusive Beispielsyntax für Markdown."
+        },
+        {
+          title: "Backup Wiederherstellung",
+          slug: "backup-wiederherstellung",
+          category: "Betrieb",
+          updatedAt: "2026-02-18T17:43:00Z",
+          author: "adminops",
+          tags: ["backup", "restore", "betrieb"],
+          excerpt: "Schrittfolge für Restore mit Integritätsprüfung.",
+          content: "Backup-Wizard, Upload, Passphrase, Verifikation, Rollback."
+        },
+        {
+          title: "SSL Checkliste",
+          slug: "ssl-checkliste",
+          category: "Sicherheit",
+          updatedAt: "2026-02-18T13:11:00Z",
+          author: "administrator",
+          tags: ["sicherheit", "tls", "https"],
+          excerpt: "Prüfpunkte für Forwarded-Header und HTTPS Setup.",
+          content: "TLS Statusseite, Reverse Proxy, Caddy und Zertifikatsrotation."
+        },
+        {
+          title: "Gruppen und Rechte",
+          slug: "gruppen-und-rechte",
+          category: "Sicherheit",
+          updatedAt: "2026-02-17T10:10:00Z",
+          author: "redaktion",
+          tags: ["gruppen", "rechte", "zugriff"],
+          excerpt: "Wer darf lesen, schreiben und vertrauliche Seiten sehen.",
+          content: "Rollenmodell, Gruppenpflege, restriktive Sichtbarkeit."
+        }
+      ];
+
+      const searchForm = document.querySelector("#searchForm");
+      const searchInput = document.querySelector("#searchInput");
+      const resultPanel = document.querySelector("#resultPanel");
+      const resultList = document.querySelector("#resultList");
+      const resultTitle = document.querySelector("#resultTitle");
+      const resultCount = document.querySelector("#resultCount");
+      const suggestionBox = document.querySelector("#suggestionBox");
+      const realSearchLink = document.querySelector("#realSearchLink");
+      const chipButtons = Array.from(document.querySelectorAll("[data-chip]"));
+
+      const escapeHtml = (value) =>
+        value
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+
+      const tokenize = (query) =>
+        query
+          .trim()
+          .toLowerCase()
+          .split(/\s+/)
+          .filter(Boolean);
+
+      const computeScore = (page, tokens) => {
+        const title = page.title.toLowerCase();
+        const tags = page.tags.join(" ").toLowerCase();
+        const excerpt = page.excerpt.toLowerCase();
+        const content = page.content.toLowerCase();
+        const category = page.category.toLowerCase();
+        const author = page.author.toLowerCase();
+        let score = 0;
+
+        for (const token of tokens) {
+          if (title.startsWith(token)) score += 10;
+          else if (title.includes(token)) score += 7;
+          if (tags.includes(token)) score += 4;
+          if (category.includes(token)) score += 3;
+          if (excerpt.includes(token)) score += 2;
+          if (content.includes(token)) score += 1;
+          if (author.includes(token)) score += 1;
+        }
+
+        if (score < 1) return 0;
+
+        const updatedAt = Date.parse(page.updatedAt);
+        if (Number.isFinite(updatedAt)) {
+          const hours = (Date.now() - updatedAt) / 3_600_000;
+          if (hours < 24) score += 2;
+          else if (hours < 168) score += 1;
+        }
+
+        return score;
+      };
+
+      const searchLocal = (query) => {
+        const tokens = tokenize(query);
+        if (tokens.length < 1) return [];
+
+        return SAMPLE_PAGES.map((page) => ({ page, score: computeScore(page, tokens) }))
+          .filter((entry) => entry.score > 0)
+          .sort((a, b) => b.score - a.score || Date.parse(b.page.updatedAt) - Date.parse(a.page.updatedAt));
+      };
+
+      const renderResults = (query, ranked) => {
+        resultPanel.hidden = false;
+        resultTitle.textContent = `Treffer für "${query}"`;
+        resultCount.textContent = `${ranked.length} Treffer`;
+
+        if (ranked.length < 1) {
+          resultList.innerHTML = '<li class="empty-result">Keine Treffer in der Demo-Datenbasis.</li>';
+          return;
+        }
+
+        resultList.innerHTML = ranked
+          .map(({ page }) => {
+            const meta = `${page.category} - ${new Date(page.updatedAt).toLocaleString("de-DE")} - von ${page.author}`;
+            return `
+              <li class="result-item">
+                <a href="/wiki/${encodeURIComponent(page.slug)}">${escapeHtml(page.title)}</a>
+                <div class="result-meta">${escapeHtml(meta)}</div>
+                <p class="result-snippet">${escapeHtml(page.excerpt)}</p>
+              </li>
+            `;
+          })
+          .join("");
+      };
+
+      const setRealSearchLink = (query) => {
+        const target = query.trim() ? `/search?q=${encodeURIComponent(query.trim())}` : "/search";
+        realSearchLink.setAttribute("href", target);
+      };
+
+      const hideSuggestions = () => {
+        suggestionBox.hidden = true;
+        suggestionBox.innerHTML = "";
+      };
+
+      const updateSuggestions = (query) => {
+        const q = query.trim().toLowerCase();
+        if (q.length < 2) {
+          hideSuggestions();
+          return;
+        }
+
+        const suggested = SAMPLE_PAGES.filter((page) => {
+          const haystack = `${page.title} ${page.tags.join(" ")} ${page.category}`.toLowerCase();
+          return haystack.includes(q);
+        }).slice(0, 6);
+
+        if (suggested.length < 1) {
+          hideSuggestions();
+          return;
+        }
+
+        suggestionBox.innerHTML = suggested
+          .map(
+            (page) =>
+              `<button type="button" class="suggestion-item" data-suggest="${escapeHtml(page.title)}">${escapeHtml(page.title)} <small>- ${escapeHtml(
+                page.category
+              )}</small></button>`
+          )
+          .join("");
+        suggestionBox.hidden = false;
+      };
+
+      searchForm.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const query = searchInput.value.trim();
+        setRealSearchLink(query);
+        hideSuggestions();
+
+        if (query.length < 1) {
+          resultPanel.hidden = true;
+          resultList.innerHTML = "";
+          return;
+        }
+
+        const ranked = searchLocal(query);
+        renderResults(query, ranked);
+      });
+
+      searchInput.addEventListener("input", () => {
+        const query = searchInput.value;
+        setRealSearchLink(query);
+        updateSuggestions(query);
+      });
+
+      searchInput.addEventListener("blur", () => {
+        window.setTimeout(() => {
+          hideSuggestions();
+        }, 110);
+      });
+
+      suggestionBox.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+        const button = target.closest("[data-suggest]");
+        if (!(button instanceof HTMLElement)) return;
+        const value = button.dataset.suggest || "";
+        searchInput.value = value;
+        searchForm.requestSubmit();
+      });
+
+      chipButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+          const value = button.dataset.chip || "";
+          searchInput.value = value;
+          setRealSearchLink(value);
+          searchForm.requestSubmit();
+        });
+      });
+    </script>
+  </body>
+</html>
