@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
-import { requireAdmin, requireAuth, requireAuthOrPublicRead, verifySessionCsrfToken } from "../lib/auth.js";
+import { requireAdmin, requireAuth, requireAuthOrPublicRead, requireFormCsrfToken, verifySessionCsrfToken } from "../lib/auth.js";
 import {
   buildAttachmentDownloadName,
   createAttachmentQuarantinePath,
@@ -40,6 +40,7 @@ import {
   getPage,
   getPageVersionRawContent,
   isValidSlug,
+  normalizeArticleSlug,
   listPageBacklinks,
   listPageHistory,
   listPagesForUser,
@@ -1208,7 +1209,14 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
 
   app.get("/wiki/:slug", { preHandler: [requireAuthOrPublicRead] }, async (request, reply) => {
     const params = request.params as { slug: string };
-    const page = await getPage(params.slug);
+    let normalizedSlug = "";
+    try {
+      normalizedSlug = normalizeArticleSlug(params.slug);
+    } catch {
+      // Invalid slugs are client input errors, not "not found".
+      return reply.code(400).type("text/plain").send("Ungültiger Slug");
+    }
+    const page = await getPage(normalizedSlug);
 
     if (!page) {
       return reply
@@ -1224,7 +1232,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         );
     }
 
-    if (params.slug !== page.slug) {
+    if (normalizedSlug !== page.slug) {
       return reply.redirect(`/wiki/${encodeURIComponent(page.slug)}`);
     }
 
@@ -1352,11 +1360,18 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     );
   });
 
-  app.post("/wiki/:slug/watch", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/wiki/:slug/watch", { preHandler: [requireAuth, requireFormCsrfToken] }, async (request, reply) => {
     const params = request.params as { slug: string };
     const body = asObject(request.body);
     const requestedJson = wantsJsonResponse(request);
-    const normalizedSlug = params.slug.trim().toLowerCase();
+    let normalizedSlug = "";
+    try {
+      normalizedSlug = normalizeArticleSlug(params.slug);
+    } catch {
+      const errorMessage = "Ungültiger Slug.";
+      if (requestedJson) return reply.code(400).send({ ok: false, error: errorMessage });
+      return reply.code(400).type("text/plain").send(errorMessage);
+    }
     const currentUser = request.currentUser;
 
     const fail = (status: number, message: string) => {
@@ -1368,10 +1383,6 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
 
     if (!currentUser) {
       return fail(401, "Anmeldung erforderlich.");
-    }
-
-    if (!verifySessionCsrfToken(request, readSingle(body._csrf))) {
-      return fail(400, "Ungültiges CSRF-Token.");
     }
 
     const page = await getPage(normalizedSlug);
@@ -1504,13 +1515,9 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     );
   });
 
-  app.post("/new", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/new", { preHandler: [requireAuth, requireFormCsrfToken] }, async (request, reply) => {
     const body = asObject(request.body);
     const uiMode = getUiMode();
-    const token = readSingle(body._csrf);
-    if (!verifySessionCsrfToken(request, token)) {
-      return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
-    }
 
     const title = readSingle(body.title).trim();
     const slug = (readSingle(body.slug).trim() || slugifyTitle(title)).toLowerCase();
@@ -1648,13 +1655,19 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
 
   app.get("/wiki/:slug/edit", { preHandler: [requireAuth] }, async (request, reply) => {
     const params = request.params as { slug: string };
-    const page = await getPage(params.slug);
+    let normalizedSlug = "";
+    try {
+      normalizedSlug = normalizeArticleSlug(params.slug);
+    } catch {
+      return reply.code(400).type("text/plain").send("Ungültiger Slug");
+    }
+    const page = await getPage(normalizedSlug);
 
     if (!page) {
       return reply.redirect("/?error=Seite+nicht+gefunden");
     }
 
-    if (params.slug !== page.slug) {
+    if (normalizedSlug !== page.slug) {
       return reply.redirect(`/wiki/${encodeURIComponent(page.slug)}/edit`);
     }
 
@@ -1863,16 +1876,18 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     });
   });
 
-  app.post("/wiki/:slug/edit", { preHandler: [requireAuth] }, async (request, reply) => {
+  app.post("/wiki/:slug/edit", { preHandler: [requireAuth, requireFormCsrfToken] }, async (request, reply) => {
     const params = request.params as { slug: string };
     const body = asObject(request.body);
+    let normalizedSlug = "";
+    try {
+      normalizedSlug = normalizeArticleSlug(params.slug);
+    } catch {
+      return reply.code(400).type("text/plain").send("Ungültiger Slug");
+    }
     const uiMode = getUiMode();
 
-    if (!verifySessionCsrfToken(request, readSingle(body._csrf))) {
-      return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
-    }
-
-    const existing = await getPage(params.slug);
+    const existing = await getPage(normalizedSlug);
     if (!existing) {
       return reply.redirect("/?error=Seite+nicht+gefunden");
     }
@@ -1882,15 +1897,15 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     }
 
     if (existing.integrityState === "invalid") {
-      return reply.redirect(`/wiki/${encodeURIComponent(params.slug)}?error=Integrit%C3%A4tspr%C3%BCfung+fehlgeschlagen`);
+      return reply.redirect(`/wiki/${encodeURIComponent(normalizedSlug)}?error=Integrit%C3%A4tspr%C3%BCfung+fehlgeschlagen`);
     }
 
     if (existing.integrityState === "unverifiable") {
-      return reply.redirect(`/wiki/${encodeURIComponent(params.slug)}?error=Integrit%C3%A4tspr%C3%BCfung+nicht+m%C3%B6glich`);
+      return reply.redirect(`/wiki/${encodeURIComponent(normalizedSlug)}?error=Integrit%C3%A4tspr%C3%BCfung+nicht+m%C3%B6glich`);
     }
 
     if (existing.encrypted && existing.encryptionState !== "ok") {
-      return reply.redirect(`/wiki/${encodeURIComponent(params.slug)}?error=Verschl%C3%BCsselter+Inhalt+konnte+nicht+entschl%C3%BCsselt+werden`);
+      return reply.redirect(`/wiki/${encodeURIComponent(normalizedSlug)}?error=Verschl%C3%BCsselter+Inhalt+konnte+nicht+entschl%C3%BCsselt+werden`);
     }
 
     const title = readSingle(body.title).trim();
@@ -1945,11 +1960,11 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         encrypted: normalizedSettings.encrypted
       });
 
-      return reply.redirect(`/wiki/${encodeURIComponent(params.slug)}/edit?${query}`);
+      return reply.redirect(`/wiki/${encodeURIComponent(normalizedSlug)}/edit?${query}`);
     }
 
     const result = await savePage({
-      slug: params.slug,
+      slug: normalizedSlug,
       title,
       categoryId: selectedCategoryId,
       securityProfile: normalizedSettings.securityProfile,
@@ -1976,13 +1991,13 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         encrypted: normalizedSettings.encrypted
       });
 
-      return reply.redirect(`/wiki/${encodeURIComponent(params.slug)}/edit?${query}`);
+      return reply.redirect(`/wiki/${encodeURIComponent(normalizedSlug)}/edit?${query}`);
     }
 
-    const updateIndexResult = await upsertSearchIndexBySlug(params.slug);
+    const updateIndexResult = await upsertSearchIndexBySlug(normalizedSlug);
     if (!updateIndexResult.updated && updateIndexResult.reason && updateIndexResult.reason !== "rebuild_running") {
       request.log.warn(
-        { slug: params.slug, reason: updateIndexResult.reason },
+        { slug: normalizedSlug, reason: updateIndexResult.reason },
         "Konnte Suchindex für bearbeitete Seite nicht inkrementell aktualisieren"
       );
     }
@@ -1990,15 +2005,20 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     await writeAuditLog({
       action: "wiki_page_updated",
       actorId: request.currentUser?.id,
-      targetId: params.slug
+      targetId: normalizedSlug
     });
 
-    return reply.redirect(`/wiki/${encodeURIComponent(params.slug)}`);
+    return reply.redirect(`/wiki/${encodeURIComponent(normalizedSlug)}`);
   });
 
   app.get("/wiki/:slug/history", { preHandler: [requireAuthOrPublicRead] }, async (request, reply) => {
     const params = request.params as { slug: string };
-    const normalizedSlug = params.slug.trim().toLowerCase();
+    let normalizedSlug = "";
+    try {
+      normalizedSlug = normalizeArticleSlug(params.slug);
+    } catch {
+      return reply.code(400).type("text/plain").send("Ungültiger Slug");
+    }
     const page = await getPage(normalizedSlug);
     const versions = await listPageHistory(normalizedSlug, 250);
 
@@ -2125,7 +2145,12 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
 
   app.get("/wiki/:slug/history/:versionId", { preHandler: [requireAuthOrPublicRead] }, async (request, reply) => {
     const params = request.params as { slug: string; versionId: string };
-    const normalizedSlug = params.slug.trim().toLowerCase();
+    let normalizedSlug = "";
+    try {
+      normalizedSlug = normalizeArticleSlug(params.slug);
+    } catch {
+      return reply.code(400).type("text/plain").send("Ungültiger Slug");
+    }
     const page = await getPage(normalizedSlug);
 
     if (page && !canUserAccessPage(page, request.currentUser)) {
@@ -2234,7 +2259,12 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
   app.get("/wiki/:slug/history/:versionId/diff", { preHandler: [requireAuthOrPublicRead] }, async (request, reply) => {
     const params = request.params as { slug: string; versionId: string };
     const query = asObject(request.query);
-    const normalizedSlug = params.slug.trim().toLowerCase();
+    let normalizedSlug = "";
+    try {
+      normalizedSlug = normalizeArticleSlug(params.slug);
+    } catch {
+      return reply.code(400).type("text/plain").send("Ungültiger Slug");
+    }
     const page = await getPage(normalizedSlug);
 
     if (page && !canUserAccessPage(page, request.currentUser)) {
@@ -2414,29 +2444,30 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     );
   });
 
-  app.post("/wiki/:slug/history/:versionId/restore", { preHandler: [requireAdmin] }, async (request, reply) => {
+  app.post("/wiki/:slug/history/:versionId/restore", { preHandler: [requireAdmin, requireFormCsrfToken] }, async (request, reply) => {
     const params = request.params as { slug: string; versionId: string };
-    const body = asObject(request.body);
-
-    if (!verifySessionCsrfToken(request, readSingle(body._csrf))) {
-      return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
+    let normalizedSlug = "";
+    try {
+      normalizedSlug = normalizeArticleSlug(params.slug);
+    } catch {
+      return reply.code(400).type("text/plain").send("Ungültiger Slug");
     }
 
     const restoreResult = await restorePageVersion({
-      slug: params.slug,
+      slug: normalizedSlug,
       versionId: params.versionId,
       restoredBy: request.currentUser?.username ?? "unknown"
     });
     if (!restoreResult.ok) {
       return reply.redirect(
-        `/wiki/${encodeURIComponent(params.slug)}/history?error=${encodeURIComponent(restoreResult.error ?? "Restore fehlgeschlagen")}`
+        `/wiki/${encodeURIComponent(normalizedSlug)}/history?error=${encodeURIComponent(restoreResult.error ?? "Restore fehlgeschlagen")}`
       );
     }
 
-    const updateIndexResult = await upsertSearchIndexBySlug(params.slug);
+    const updateIndexResult = await upsertSearchIndexBySlug(normalizedSlug);
     if (!updateIndexResult.updated && updateIndexResult.reason && updateIndexResult.reason !== "rebuild_running") {
       request.log.warn(
-        { slug: params.slug, reason: updateIndexResult.reason },
+        { slug: normalizedSlug, reason: updateIndexResult.reason },
         "Konnte Suchindex nach Restore nicht inkrementell aktualisieren"
       );
     }
@@ -2444,30 +2475,31 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     await writeAuditLog({
       action: "wiki_page_restored",
       actorId: request.currentUser?.id,
-      targetId: params.slug,
+      targetId: normalizedSlug,
       details: {
         versionId: params.versionId
       }
     });
 
-    return reply.redirect(`/wiki/${encodeURIComponent(params.slug)}?notice=${encodeURIComponent("Version wiederhergestellt")}`);
+    return reply.redirect(`/wiki/${encodeURIComponent(normalizedSlug)}?notice=${encodeURIComponent("Version wiederhergestellt")}`);
   });
 
-  app.post("/wiki/:slug/delete", { preHandler: [requireAdmin] }, async (request, reply) => {
+  app.post("/wiki/:slug/delete", { preHandler: [requireAdmin, requireFormCsrfToken] }, async (request, reply) => {
     const params = request.params as { slug: string };
-    const body = asObject(request.body);
-
-    if (!verifySessionCsrfToken(request, readSingle(body._csrf))) {
-      return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
+    let normalizedSlug = "";
+    try {
+      normalizedSlug = normalizeArticleSlug(params.slug);
+    } catch {
+      return reply.code(400).type("text/plain").send("Ungültiger Slug");
     }
 
-    const page = await getPage(params.slug);
+    const page = await getPage(normalizedSlug);
     if (!page) {
       return reply.redirect("/?error=Seite+nicht+gefunden");
     }
 
     const candidateUploads = extractUploadReferencesFromMarkdown(page.content);
-    const deleteResult = await deletePage(params.slug, {
+    const deleteResult = await deletePage(normalizedSlug, {
       deletedBy: request.currentUser?.username ?? "unknown"
     });
     if (!deleteResult.ok) {
@@ -2478,10 +2510,10 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
       return reply.redirect("/?error=Seite+nicht+gefunden");
     }
 
-    const deleteIndexResult = await removeSearchIndexBySlug(params.slug);
+    const deleteIndexResult = await removeSearchIndexBySlug(normalizedSlug);
     if (!deleteIndexResult.updated && deleteIndexResult.reason && deleteIndexResult.reason !== "index_missing") {
       request.log.warn(
-        { slug: params.slug, reason: deleteIndexResult.reason },
+        { slug: normalizedSlug, reason: deleteIndexResult.reason },
         "Konnte Suchindex-Eintrag nach Löschung nicht inkrementell entfernen"
       );
     }
@@ -2494,14 +2526,14 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         });
         removedUploadsCount = cleanupResult.deleted.length;
       } catch (error) {
-        request.log.warn({ error, slug: params.slug }, "Upload-Cleanup nach Seitenlöschung fehlgeschlagen");
+        request.log.warn({ error, slug: normalizedSlug }, "Upload-Cleanup nach Seitenlöschung fehlgeschlagen");
       }
     }
 
     await writeAuditLog({
       action: "wiki_page_deleted",
       actorId: request.currentUser?.id,
-      targetId: params.slug,
+      targetId: normalizedSlug,
       details: {
         removedUploadsCount
       }

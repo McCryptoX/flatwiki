@@ -150,3 +150,23 @@ export const verifySessionCsrfToken = (request: FastifyRequest, tokenFromBody: s
   if (!request.csrfToken || !tokenFromBody) return false;
   return safeEqual(request.csrfToken, tokenFromBody);
 };
+
+export const requireFormCsrfToken = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+  const method = request.method.toUpperCase();
+  if (method !== "POST" && method !== "PUT" && method !== "DELETE") return;
+
+  const contentTypeHeader = request.headers["content-type"];
+  const contentType = Array.isArray(contentTypeHeader) ? contentTypeHeader.join(",") : contentTypeHeader ?? "";
+  const isFormRequest =
+    contentType.includes("application/x-www-form-urlencoded") || contentType.includes("multipart/form-data");
+  if (!isFormRequest) return;
+
+  const body = request.body && typeof request.body === "object" ? (request.body as Record<string, unknown>) : {};
+  const tokenValue = body["_csrf"];
+  const token = typeof tokenValue === "string" ? tokenValue : "";
+
+  // Scoped form-only CSRF guard avoids affecting JSON/API endpoints.
+  if (!verifySessionCsrfToken(request, token)) {
+    return reply.code(403).type("text/plain").send("Ungültiges CSRF-Token");
+  }
+};
