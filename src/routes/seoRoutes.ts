@@ -13,47 +13,25 @@ import { renderAdminHeader } from "./adminRoutes.js";
 
 const ROBOTS_MAX_BYTES = 32 * 1024;
 
-const DEFAULT_ROBOTS_TEMPLATE = `# FlatWiki crawl policy: indexing explicitly allowed for all crawlers and AI bots.
-
-User-agent: *
+const DEFAULT_ROBOTS_TEMPLATE = `User-agent: *
 Allow: /
 
-# OpenAI
+# AI Crawlers
 User-agent: GPTBot
 Allow: /
-User-agent: OAI-SearchBot
-Allow: /
-User-agent: ChatGPT-User
-Allow: /
-
-# Anthropic
 User-agent: ClaudeBot
 Allow: /
-User-agent: Claude-Web
-Allow: /
-
-# Perplexity
 User-agent: PerplexityBot
 Allow: /
-
-# Google
-User-agent: Google-Extended
-Allow: /
-
-# Common Crawl / ByteDance
-User-agent: CCBot
-Allow: /
-User-agent: Bytespider
-Allow: /
-
-# xAI / Grok (observed variants)
 User-agent: Grok
 Allow: /
-User-agent: GrokBot
+
+# Major search engines
+User-agent: Googlebot
 Allow: /
-User-agent: xAI-Grok
+User-agent: Bingbot
 Allow: /
-User-agent: Grok-DeepSearch
+User-agent: DuckDuckBot
 Allow: /
 `;
 
