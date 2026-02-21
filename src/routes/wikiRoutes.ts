@@ -17,7 +17,6 @@ import {
 import { writeAuditLog } from "../lib/audit.js";
 import { findCategoryById, getDefaultCategory, listCategories } from "../lib/categoryStore.js";
 import { createPageComment, deleteCommentsForPage, deletePageComment, listPageComments } from "../lib/commentStore.js";
-import { etagWikiPage } from "../lib/atomicIntegrityStore.js";
 import { listGroupIdsForUser, listGroups } from "../lib/groupStore.js";
 import { createNotification, deleteNotificationsForPage } from "../lib/notificationStore.js";
 import { listTemplates } from "../lib/templateStore.js";
@@ -108,8 +107,74 @@ const ifNoneMatchMatches = (ifNoneMatchHeader: string | string[] | undefined, et
   return candidates.some((entry) => normalizeWeakEtag(entry) === normalizedExpected);
 };
 
-const buildPageFallbackEtag = (slug: string, updatedAt: string): string =>
-  createHash("sha256").update(`${slug}:${updatedAt}`, "utf8").digest("hex");
+const createStrongEtag = (value: string): string => `"${createHash("sha256").update(value, "utf8").digest("hex")}"`;
+
+const buildGuestWikiPageEtag = (input: {
+  slug: string;
+  title: string;
+  categoryName: string;
+  securityProfile: SecurityProfile;
+  visibility: "all" | "restricted";
+  encrypted: boolean;
+  sensitive: boolean;
+  integrityState: string;
+  updatedAt: string;
+  updatedBy: string;
+  html: string;
+  tableOfContents: Array<{ id: string; text: string; depth: number }>;
+  backlinks: Array<{ slug: string; title: string; categoryName: string; updatedAt: string }>;
+  pageComments: Array<{
+    id: string;
+    authorDisplayName: string;
+    authorUsername: string;
+    createdAt: string;
+    status: string;
+    body: string;
+  }>;
+  currentCommentPage: number;
+  totalCommentPages: number;
+  notice: string;
+  error: string;
+}): string => {
+  const payload = JSON.stringify({
+    slug: input.slug,
+    title: input.title,
+    categoryName: input.categoryName,
+    securityProfile: input.securityProfile,
+    visibility: input.visibility,
+    encrypted: input.encrypted,
+    sensitive: input.sensitive,
+    integrityState: input.integrityState,
+    updatedAt: input.updatedAt,
+    updatedBy: input.updatedBy,
+    html: input.html,
+    tableOfContents: input.tableOfContents.map((entry) => ({
+      id: entry.id,
+      text: entry.text,
+      depth: entry.depth
+    })),
+    backlinks: input.backlinks.map((entry) => ({
+      slug: entry.slug,
+      title: entry.title,
+      categoryName: entry.categoryName,
+      updatedAt: entry.updatedAt
+    })),
+    pageComments: input.pageComments.map((entry) => ({
+      id: entry.id,
+      authorDisplayName: entry.authorDisplayName,
+      authorUsername: entry.authorUsername,
+      createdAt: entry.createdAt,
+      status: entry.status,
+      body: entry.body
+    })),
+    currentCommentPage: input.currentCommentPage,
+    totalCommentPages: input.totalCommentPages,
+    notice: input.notice,
+    error: input.error
+  });
+
+  return createStrongEtag(payload);
+};
 
 const COMMENT_PAGE_SIZE = 50;
 const COMMENT_REPLY_MENTION_REGEX = /(^|[\s(>])@([a-z0-9._-]{3,32})\b/gi;
@@ -1352,36 +1417,6 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         );
     }
 
-    // ── ETag / HTTP-Caching ───────────────────────────────────────────────────
-    // Only use conditional 304 responses for non-personalized guest pages.
-    // Authenticated responses include user-specific fragments (watch state, badges).
-    if (!request.currentUser) {
-      try {
-        const { etag: fileEtag, exists } = await etagWikiPage(normalizedSlug);
-        const rawEtag = exists && fileEtag ? fileEtag : buildPageFallbackEtag(page.slug, page.updatedAt);
-        const etag = `W/"${rawEtag}"`;
-        reply.header("ETag", etag);
-        reply.header("Cache-Control", "private, no-cache");
-        if (ifNoneMatchMatches(request.headers["if-none-match"], etag)) {
-          return reply.code(304).send();
-        }
-      } catch {
-        // If ETag creation fails, continue with a normal full response.
-      }
-    } else {
-      reply.header("Cache-Control", "private, no-store");
-    }
-
-    try {
-      await recordPageView({
-        slug: page.slug,
-        ...(request.currentUser?.id ? { userId: request.currentUser.id } : {}),
-        ...(request.currentSessionId ? { sessionId: request.currentSessionId } : {})
-      });
-    } catch (error) {
-      request.log.warn({ error, slug: page.slug }, "Konnte Seitenaufruf nicht fuer Trending erfassen");
-    }
-
     const articleToc = renderArticleToc(page.slug, page.tableOfContents);
     const [backlinks, allPageComments, activeUsers] = await Promise.all([
       listPageBacklinks(page.slug, request.currentUser),
@@ -1407,6 +1442,52 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         : totalCommentPages;
     const commentsStart = (currentCommentPage - 1) * COMMENT_PAGE_SIZE;
     const visibleComments = pageComments.slice(commentsStart, commentsStart + COMMENT_PAGE_SIZE);
+    const notice = readSingle(query.notice);
+    const error = readSingle(query.error);
+
+    // ── ETag / HTTP-Caching ───────────────────────────────────────────────────
+    // Use conditional 304 responses for non-personalized guest pages only.
+    // Authenticated responses include user-specific fragments (watch state, badges, actions).
+    if (!request.currentUser) {
+      const etag = buildGuestWikiPageEtag({
+        slug: page.slug,
+        title: page.title,
+        categoryName: page.categoryName,
+        securityProfile: page.securityProfile,
+        visibility: page.visibility,
+        encrypted: page.encrypted,
+        sensitive: page.sensitive,
+        integrityState: page.integrityState,
+        updatedAt: page.updatedAt,
+        updatedBy: page.updatedBy,
+        html: page.html,
+        tableOfContents: page.tableOfContents,
+        backlinks,
+        pageComments,
+        currentCommentPage,
+        totalCommentPages,
+        notice,
+        error
+      });
+      reply.header("ETag", etag);
+      reply.header("Cache-Control", "public, max-age=0, must-revalidate");
+      if (ifNoneMatchMatches(request.headers["if-none-match"], etag)) {
+        return reply.code(304).send();
+      }
+    } else {
+      reply.header("Cache-Control", "private, no-store");
+    }
+
+    try {
+      await recordPageView({
+        slug: page.slug,
+        ...(request.currentUser?.id ? { userId: request.currentUser.id } : {}),
+        ...(request.currentSessionId ? { sessionId: request.currentSessionId } : {})
+      });
+    } catch (recordError) {
+      request.log.warn({ error: recordError, slug: page.slug }, "Konnte Seitenaufruf nicht fuer Trending erfassen");
+    }
+
     const commentPageUrl = (targetPage: number): string => {
       const target = Math.min(Math.max(targetPage, 1), totalCommentPages);
       const params = new URLSearchParams();
@@ -1587,8 +1668,8 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         body,
         user: request.currentUser,
         csrfToken: request.csrfToken,
-        notice: readSingle(query.notice),
-        error: readSingle(query.error),
+        notice,
+        error,
         scripts: scripts.length > 0 ? scripts : undefined
       })
     );

@@ -281,7 +281,7 @@ check_etag_caching() {
 
   local cc
   cc="$(grep -i '^cache-control:' "${headers_file}" | sed -E 's/^[Cc][Aa][Cc][Hh][Ee]-[Cc][Oo][Nn][Tt][Rr][Oo][Ll]:[[:space:]]*//' | tr -d '\r\n')"
-  if [[ "${cc}" != *"private"* ]] || [[ "${cc}" != *"no-cache"* ]]; then
+  if [[ "${cc}" != *"public"* ]] || [[ "${cc}" != *"must-revalidate"* ]]; then
     echo "Fehler: ETag-Test – Cache-Control falsch für Gast: '${cc}'" >&2
     exit 1
   fi
