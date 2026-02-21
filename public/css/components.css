@@ -416,10 +416,6 @@
   background: transparent;
 }
 
-.dashboard-search-form-google .dashboard-search-box input:focus {
-  outline: none;
-  box-shadow: none;
-}
 
 .dashboard-search-plus {
   width: 42px;
