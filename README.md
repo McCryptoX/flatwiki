@@ -45,6 +45,7 @@ FlatWiki ist ein modernes, durchsuchbares Flat-File-Wiki mit Login, Rollen, Admi
   - Gzip-Kompression älterer Versionen (`.json.gz`)
 - Volltextsuche
 - Live-Vorschläge im Suchfeld während der Eingabe
+- Suchoperatoren für präzisere Suchabfragen (z. B. Feld-/Tag-Filter)
 - Interne Wiki-Links per `[[Seite]]` oder `[[Seite|Label]]`
 - Backlinks pro Artikel ("Verlinkt von")
 - Defekte interne Links prüfen im Admin-Bereich (`/admin/links`)
@@ -53,6 +54,7 @@ FlatWiki ist ein modernes, durchsuchbares Flat-File-Wiki mit Login, Rollen, Admi
 - Bild-Upload im Editor (1-x Dateien, automatische eindeutige Dateinamen)
 - Kategoriebezogene Upload-Pfade (`/uploads/<kategorie-ordner>/...`)
 - Visueller Markdown-Editor (Toolbar + Live-Vorschau)
+- Bearbeitungskonflikt-Erkennung beim Speichern (Schutz vor Überschreiben fremder Änderungen)
 - Schnell-Assistent für neue Seiten (3 Schritte: Inhaltstyp, Kategorie, Schutz)
 - Vorlagen für Alltag/Firma: Idee, Dokumentation, Reisebericht, Finanznotiz
 - Admin-Vorlagenverwaltung unter `/admin/templates` (aktivieren, sortieren, bearbeiten, eigene Vorlagen anlegen)
@@ -79,6 +81,20 @@ FlatWiki ist ein modernes, durchsuchbares Flat-File-Wiki mit Login, Rollen, Admi
 - Admin-Gruppenverwaltung (`/admin/groups`)
 - Visueller Setup-Assistent beim ersten Start (`/setup`)
 - Sicherheitsgrundlagen: `scrypt`, CSRF, Rate-Limit, Security-Header, Audit-Log
+- Kommentare mit Moderation und Admin-Queue (`/admin/comments`)
+  - Status `pending` / `approved` / `rejected`
+  - Bulk-Freigabe, Bulk-Ablehnung, Bulk-Löschen und Seitenweises Löschen
+  - Konfigurierbare Modi: immer Freigabe nötig / alle auto-freigeben / nur Trusted User auto-freigeben
+- Erwähnungen in Kommentaren (`@username`)
+  - Live-Vorschläge im Kommentarfeld
+  - Klick auf `@username` im Kommentar übernimmt Mention direkt ins Eingabefeld (Reply-Flow)
+- Zusätzliche Kommentar-Härtung
+  - Rate-Limits auf Kommentar-/Upload-Endpunkten
+  - Link-/Mention-Limits pro Kommentar
+  - Cooldown und Duplikat-Schutz gegen Spam
+- Upload-Schutz für `/uploads/*` konsistent mit Auth/Public-Read-Modus
+- E-Mail-Verwaltung im Admin (`/admin/mail`) inkl. SMTP-Testmail
+  - SMTP- und User-E-Mail-Daten lokal verschlüsselt gespeichert (bei gesetztem `CONTENT_ENCRYPTION_KEY`)
 - Stabilitäts-Checks in CI (Merge-Konfliktmarker, TypeScript-Build, Smoketest, Docker-Build)
 - 1-Klick Domain/HTTPS-Setup-Script mit Caddy + Let's Encrypt (ACME): `scripts/deploy-caddy.sh`
 
