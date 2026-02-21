@@ -1,6 +1,7 @@
 # FlatWiki
 
 FlatWiki ist ein modernes, durchsuchbares Flat-File-Wiki mit Login, Rollen, Admin-Benutzerverwaltung und Markdown-Seiten.
+Aktueller Release-Stand: `v0.8.1` ([Release Notes](docs/releases/v0.8.1.md))
 
 ## Open Source
 

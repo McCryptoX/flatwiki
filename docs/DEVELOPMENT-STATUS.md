@@ -1,3 +1,16 @@
+## 21.02.2026 – v0.8.1 Stability & Security Patch
+
+- Strict ENV validation + fail-fast
+- Vitest-Security-Tests (scrypt, CSRF, AES+HMAC roundtrip)
+- Atomic writes, ETag/If-Match, CSP-Inlining
+- Key-Separation und Config-Security verbessert
+- CI + Docker-Smoketest erweitert
+- Release-Tag und GitHub Release noch ausstehend
+- Status: Produktionsreif
+- Offene Kritikalitäten: 0
+- Nächster Meilenstein: v0.9.0 (Search + Performance)
+- Letzter Commit: `28adc96`
+
 ## 20.02.2026 – CSS-Struktur modernisiert (Theme + Components)
 
 - Neue Struktur eingeführt:
