@@ -171,6 +171,13 @@ const roleOptions = (role: "admin" | "user"): string => `
   <option value="admin" ${role === "admin" ? "selected" : ""}>admin</option>
 `;
 
+const VALID_THEMES = new Set(["light", "dark", "system"]);
+const themeOptions = (theme: string): string => `
+  <option value="system" ${theme === "system" ? "selected" : ""}>System (automatisch)</option>
+  <option value="light" ${theme === "light" ? "selected" : ""}>Hell</option>
+  <option value="dark" ${theme === "dark" ? "selected" : ""}>Dunkel</option>
+`;
+
 const formatFileSize = (sizeBytes: number): string => {
   if (sizeBytes < 1024) return `${sizeBytes} B`;
   if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`;
@@ -2780,6 +2787,9 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
           <label>Rolle
             <select name="role">${roleOptions((query.role as "admin" | "user") ?? user.role)}</select>
           </label>
+          <label>Theme
+            <select name="theme">${themeOptions((query.theme as string) ?? user.theme ?? "system")}</select>
+          </label>
           <label>
             <input type="checkbox" name="disabled" value="1" ${query.disabled === "1" || (query.disabled === undefined && user.disabled) ? "checked" : ""} />
             Konto deaktivieren
@@ -2823,6 +2833,8 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
     const role = body.role === "admin" ? "admin" : "user";
     const disabled = body.disabled === "1";
     const displayName = body.displayName ?? "";
+    const themeRaw = body.theme;
+    const theme = (typeof themeRaw === "string" && VALID_THEMES.has(themeRaw) ? themeRaw : undefined) as import("../types.js").Theme | undefined;
 
     const users = await listUsers();
     const target = users.find((candidate) => candidate.id === params.id);
@@ -2849,7 +2861,8 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
     const result = await updateUser(target.id, {
       displayName,
       role,
-      disabled
+      disabled,
+      ...(theme !== undefined ? { theme } : {})
     });
 
     if (!result.user) {

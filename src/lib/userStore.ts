@@ -169,6 +169,7 @@ export interface UpdateUserInput {
   displayName: string;
   role: Role;
   disabled: boolean;
+  theme?: Theme;
 }
 
 export const updateUser = async (userId: string, input: UpdateUserInput): Promise<{ user?: PublicUser; error?: string }> => {
@@ -187,6 +188,7 @@ export const updateUser = async (userId: string, input: UpdateUserInput): Promis
     target.displayName = displayName;
     target.role = input.role;
     target.disabled = input.disabled;
+    if (input.theme !== undefined) target.theme = input.theme;
     target.updatedAt = new Date().toISOString();
 
     await saveUsers(users);

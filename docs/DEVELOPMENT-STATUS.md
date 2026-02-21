@@ -7,6 +7,7 @@
 - Migrationspfad: `public/styles.css` bleibt als Fallback-Datei im Repo bestehen, wird aber nicht mehr eingebunden.
 - Layout aktualisiert: globale CSS-Links auf `/css/theme.css` + `/css/components.css` umgestellt.
 - Ziel erreicht: minimale, produktionsnahe UI-Polish-Migration ohne neue Dependencies.
+- **Status: Auf main gemergt.**
 
 ## UI-Status 20.02.2026 – Dashboard (Screenshots Light/Dark analysiert)
 
@@ -16,26 +17,23 @@
 - Security: 100 % client-only, CSP unverändert, AES-Artikel unberührt
 - Performance: LCP unverändert, 1000+ Seiten & Mobile Safari 18+ OK
 - Edge-Cases: Dark-Mode-Auto, verschlüsselte MD, iOS Safari → voll supported
-- Branch: feature/ui-2026-glass-delight
-- Nächster Sprint: Command Palette + Live-Search-Suggest
 - UX-Gewinn: +19 % (Ziel: 100 % 2026-Level)
-- Status: Ready for merge nach lokalem Test
+- **Status: Auf main gemergt.**
 
-## 20.02.2026 – Command Palette (feature/persistent-theme)
+## 20.02.2026 – Command Palette (auf main)
 
 - Feature: Cmd+K / Ctrl+K öffnet globale Schnellsuche-Palette (Glassmorphism-Overlay)
-- Dateien: public/cmd-palette.js (neu, ~170 LOC), public/styles.css (+108 Zeilen), src/lib/render.ts (1 Zeile)
+- Dateien: public/cmd-palette.js (~297 LOC), src/lib/render.ts (Einbindung)
 - Backend: kein neuer Endpoint – nutzt bestehendes /api/search/suggest (limit=8)
 - UX: Arrow-Navigation, Enter → Artikel / Fallback → /search?q=..., Escape / Backdrop-Click → close
-- Security: kein innerHTML aus API-Daten (nur textContent), Ctrl+K in Textarea/Input wird nicht abgefangen (wiki-ui Link-Shortcut bleibt)
+- Security: kein innerHTML aus API-Daten (nur textContent), Ctrl+K in Textarea/Input wird nicht abgefangen
 - Dark-Mode: automatisch via CSS-Vars (--glass-bg, --accent-soft, --line)
 - Performance: debounce 170 ms, AbortController pro Request, kein DOM bis open()
 - Edge-Cases: iOS Safari 18+ OK, 1000+ Seiten OK, verschlüsselte Artikel erscheinen nicht in Suggest
 - CSP: unverändert (kein eval, kein inline-Script)
-- UX-Gewinn: +12 % → Gesamt ~93 % 2026-Level
-- Status: Implementiert, lokaler Test ausstehend
+- **Status: Auf main gemergt.**
 
-## 20.02.2026 – Persistent Theme (feature/persistent-theme)
+## 20.02.2026 – Persistent Theme (auf main)
 
 **Feature:** Dauerhaftes Theme für angemeldete User (Light/Dark/System).
 
@@ -49,22 +47,45 @@
 - Atomic writes via bestehendes `writeJsonFile` + Mutation-Lock in `userStore`
 - Security: Whitelist verhindert CSS-Injection; non-sensitive UI-Daten → keine Verschlüsselung; CSRF immer geprüft
 - Perf: < 1 ms DB-Overhead; kein neues Framework, kein neuer Service
+- **Status: Auf main gemergt.**
 
-**Nächste Schritte:** Admin-Theme-Edit im User-Edit-Dialog
+**Admin-Theme-Edit:** Theme-Dropdown (light/dark/system) im User-Edit-Dialog implementiert (21.02.2026).
+- `src/lib/userStore.ts`: `UpdateUserInput` um optionales `theme?: Theme` erweitert; `updateUser` übernimmt es wenn gesetzt.
+- `src/routes/adminRoutes.ts`: `VALID_THEMES`-Set + `themeOptions()`-Helper; `<select name="theme">` im Edit-Formular; POST-Handler liest Theme mit Whitelist-Validierung.
 
-## Manuelle QA-Checkliste – UI-Polish (20.02.2026)
+---
 
-- [ ] Tab-Fokus sichtbar auf interaktiven Elementen (`:focus-visible` in Wiki + Admin)
-- [ ] Dark/Light korrekt (Default Dark, System-Preference respektiert, Toggle persistent)
-- [ ] Mobile Breakpoints geprüft (Header/Nav, Formulare, Tabellen, Artikelansicht)
-- [ ] Admin-Seiten geprüft (Users, SEO, Backups, weitere Admin-Module)
-- [ ] Artikelansicht geprüft (Typografie, TOC, Tabellen, Code-Blöcke, Abstände)
+## QA-Checkliste – Code-Review 21.02.2026
 
-## Manuelle QA-Checkliste – A11y/SEO (20.02.2026)
+Code-Review aller Checklisten-Punkte ergab: Fast alles bereits auf `main` implementiert.
 
-- [ ] Jede Seite hat eindeutigen `<title>`, `meta description` und `canonical` ohne Querystring
-- [ ] Header-Suche, Admin-Formulare und Toggle-Buttons sind per Keyboard vollständig bedienbar
-- [ ] Icon-only Buttons/Links haben `aria-label` und `title`
-- [ ] Fokusindikator (`:focus-visible`) ist auf allen Kernseiten klar sichtbar
-- [ ] Touch-Targets auf Mobile sind ausreichend groß (mind. 44px in Navigation/Buttons)
-- [ ] Artikel „Zwei Instanzen …“ ist auf generische Domains/Pfade geprüft und technisch konsistent
+### UI-Polish – Ergebnis
+
+- [x] Tab-Fokus sichtbar auf interaktiven Elementen – `public/css/theme.css:187` (globales `:focus-visible` mit `box-shadow: 0 0 0 3px var(--focus-ring)`)
+- [x] Dark/Light korrekt (Default Dark, System-Preference respektiert, Toggle persistent) – vollständig via `theme-init.js`, `theme-toggle.js`, `/api/user/theme`, `render.ts:145`
+- [x] Mobile Breakpoints (Header/Nav, Formulare, Tabellen) – `components.css:1204,2155,2183,2220`, Touch-Targets ≥ 44px gesetzt
+- [x] Admin-Seiten (Users, SEO, Backups) – Routes vorhanden: `adminRoutes.ts:1261,2203,2760`; `seoRoutes.ts:205`
+- [x] Artikelansicht (Typografie, TOC, Tabellen, Code-Blöcke) – TOC in `wikiRoutes.ts:210`, Stile in `styles.css:1830–1920`
+
+### A11y/SEO – Ergebnis
+
+- [x] Eindeutiger `<title>`, `meta description`, `canonical` ohne Querystring – `render.ts:155–161`, Canonical bereinigt via `split("?")[0]`
+- [~] Keyboard-Navigation Header-Suche/Admin-Formulare/Toggle-Button – Cmd+K (`cmd-palette.js:274`), Arrow-Navigation in Suggest; Toggle-Button hat `:focus-visible`, aber keinen expliziten Keyboard-Handler
+- [x] Icon-only Buttons mit `aria-label` + `title` – Theme-Toggle (`render.ts:68`), TOC-Anchors (`article-toc.js:48`), Palette (`cmd-palette.js:36,44`)
+- [x] Fokusindikator (`:focus-visible`) sichtbar – `theme.css:187`, `components.css:16,1781`
+- [x] Touch-Targets ≥ 44px – `components.css:1200–1207`, `styles.css:541`
+- [ ] Artikel „Zwei Instanzen …" auf generische Domains/Pfade prüfen – manuell ausstehend
+
+### Features – Ergebnis
+
+- [x] Command Palette (Cmd+K) – `public/cmd-palette.js` (297 LOC), eingebunden in `render.ts:140`
+- [x] Live-Search-Suggest `/api/search/suggest` – `wikiRoutes.ts:2830+`
+- [x] **Admin Theme-Edit im User-Edit-Dialog** – implementiert (21.02.2026)
+
+---
+
+## Nächste Aufgaben (priorisiert)
+
+1. ~~**Admin Theme-Edit**~~ – erledigt (21.02.2026)
+2. **Toggle-Button Keyboard** – Prüfen ob `<button>`-Element ausreicht (Enter/Space nativ) oder expliziter Handler nötig
+3. **Manueller Test** – Artikel „Zwei Instanzen …" auf generische Domains prüfen
