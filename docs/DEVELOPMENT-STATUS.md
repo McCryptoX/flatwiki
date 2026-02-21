@@ -89,3 +89,16 @@ Code-Review aller Checklisten-Punkte ergab: Fast alles bereits auf `main` implem
 1. ~~**Admin Theme-Edit**~~ – erledigt (21.02.2026)
 2. **Toggle-Button Keyboard** – Prüfen ob `<button>`-Element ausreicht (Enter/Space nativ) oder expliziter Handler nötig
 3. **Manueller Test** – Artikel „Zwei Instanzen …" auf generische Domains prüfen
+
+## 21.02.2026 – v0.8.0 Foundation (Version + Testbasis)
+
+- Version auf `0.8.0` angehoben (`package.json`, `package-lock.json` Root-Metadaten).
+- Vitest-Fundament ergänzt:
+  - `vitest.config.ts`
+  - npm-Skripte: `test`, `test:watch`, `test:coverage`
+  - Dev-Dependencies geplant: `vitest`, `@vitest/coverage-v8`, `jsdom`
+- Kritische erste Tests hinzugefügt:
+  - `tests/password.test.ts` (scrypt hash/verify + Rehash/Strength)
+  - `tests/auth-csrf.test.ts` (Login-/Session-CSRF + Form-CSRF-Guard)
+  - `tests/wiki-crypto-integrity.test.ts` (verschlüssertes Speichern + Integrität + Roundtrip)
+- Hinweis: In dieser Ausführungsumgebung sind `node`/`npm` nicht verfügbar; Installation und Testlauf müssen lokal erfolgen.
