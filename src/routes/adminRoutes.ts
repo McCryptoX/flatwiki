@@ -79,6 +79,7 @@ import {
   type UiMode
 } from "../lib/runtimeSettingsStore.js";
 import { backfillUploadDerivatives, getUploadDerivativeToolingStatus } from "../lib/uploadDerivativeBackfill.js";
+import { deriveUploadPaths, isLikelyGeneratedDerivative } from "../lib/uploadDerivatives.js";
 import { deleteUserSessions } from "../lib/sessionStore.js";
 import { convertWikitextToMarkdown } from "../lib/wikitextImport.js";
 import { canUserAccessPage, getPage, listBrokenInternalLinks, listPages, savePage, slugifyTitle } from "../lib/wikiStore.js";
@@ -258,12 +259,49 @@ const formatFileSize = (sizeBytes: number): string => {
   return `${(sizeBytes / (1024 * 1024)).toFixed(2)} MB`;
 };
 
+type UploadUsageReportData = Awaited<ReturnType<typeof getUploadUsageReport>>;
+type UploadUsageFileEntry = UploadUsageReportData["files"][number];
+
+interface MediaOriginalEntry {
+  file: UploadUsageFileEntry;
+  hasAvif: boolean;
+  hasWebp: boolean;
+  convertible: boolean;
+  missingDerivatives: number;
+}
+
+const CONVERTIBLE_DERIVATIVE_SOURCE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif"]);
+
+const buildMediaOriginalEntries = (report: UploadUsageReportData): MediaOriginalEntry[] => {
+  const byFileName = new Map(report.files.map((entry) => [entry.fileName, entry] as const));
+  const originals = report.files.filter((entry) => !isLikelyGeneratedDerivative(entry.fileName));
+
+  return originals.map((entry) => {
+    const derived = deriveUploadPaths(entry.fileName);
+    const hasAvif = byFileName.has(derived.avifPath);
+    const hasWebp = byFileName.has(derived.webpPath);
+    const convertible = CONVERTIBLE_DERIVATIVE_SOURCE_EXTENSIONS.has(derived.extension);
+    const missingDerivatives = convertible ? Number(!hasAvif) + Number(!hasWebp) : 0;
+    return {
+      file: entry,
+      hasAvif,
+      hasWebp,
+      convertible,
+      missingDerivatives
+    };
+  });
+};
+
 const renderMediaTable = (
   csrfToken: string,
-  report: Awaited<ReturnType<typeof getUploadUsageReport>>
+  rows: MediaOriginalEntry[],
+  options?: { onlyMissingDerivatives?: boolean }
 ): string => {
-  if (report.files.length === 0) {
-    return '<p class="empty">Keine hochgeladenen Bilddateien vorhanden.</p>';
+  if (rows.length === 0) {
+    if (options?.onlyMissingDerivatives) {
+      return '<p class="empty">Alle Originalbilder haben bereits AVIF/WEBP-Derivate.</p>';
+    }
+    return '<p class="empty">Keine Originalbilder vorhanden.</p>';
   }
 
   return `
@@ -274,13 +312,15 @@ const renderMediaTable = (
             <th>Datei</th>
             <th>Größe</th>
             <th>Zuletzt geändert</th>
+            <th>Derivate</th>
             <th>Einbindung</th>
             <th>Aktionen</th>
           </tr>
         </thead>
         <tbody>
-          ${report.files
-            .map((file) => {
+          ${rows
+            .map((row) => {
+              const file = row.file;
               const references =
                 file.referencedBy.length > 0
                   ? `<div class="media-ref-list">
@@ -291,6 +331,10 @@ const renderMediaTable = (
                         .join("")}
                     </div>`
                   : '<span class="media-ref-empty">nicht eingebunden</span>';
+              const derivativeState = row.convertible
+                ? `<span class="${row.hasAvif ? "status-badge success" : "status-badge warning"}">AVIF ${row.hasAvif ? "vorhanden" : "fehlt"}</span>
+                   <span class="${row.hasWebp ? "status-badge success" : "status-badge warning"}">WEBP ${row.hasWebp ? "vorhanden" : "fehlt"}</span>`
+                : '<span class="status-badge secondary">nicht konvertierbar</span>';
 
               const actionHtml =
                 file.referencedBy.length > 0
@@ -320,6 +364,7 @@ const renderMediaTable = (
                   </td>
                   <td>${escapeHtml(formatFileSize(file.sizeBytes))}</td>
                   <td>${escapeHtml(formatDate(file.modifiedAt))}</td>
+                  <td><div class="action-row">${derivativeState}</div></td>
                   <td>${references}</td>
                   <td>${actionHtml}</td>
                 </tr>
@@ -2208,7 +2253,13 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
   app.get("/admin/media", { preHandler: [requireAdmin] }, async (request, reply) => {
     const query = asRecord(request.query);
     const [report, toolingStatus] = await Promise.all([getUploadUsageReport(), getUploadDerivativeToolingStatus()]);
+    const onlyMissingDerivatives = query.missingOnly === "1";
+    const originalEntries = buildMediaOriginalEntries(report);
+    const tableEntries = onlyMissingDerivatives
+      ? originalEntries.filter((entry) => entry.convertible && entry.missingDerivatives > 0)
+      : originalEntries;
     const orphanCount = report.files.filter((file) => file.referencedBy.length === 0).length;
+    const missingDerivativeOriginalCount = originalEntries.filter((entry) => entry.convertible && entry.missingDerivatives > 0).length;
 
     const body = `
       ${renderAdminHeader({
@@ -2231,13 +2282,20 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
       })}
       <section class="content-wrap">
         <p>
-          ${report.files.length} Upload-Datei(en), ${escapeHtml(formatFileSize(report.totalSizeBytes))} gesamt,
-          ${orphanCount} ungenutzt.
+          ${originalEntries.length} Originalbild(er), ${report.files.length} Upload-Datei(en), ${escapeHtml(formatFileSize(report.totalSizeBytes))} gesamt,
+          ${orphanCount} ungenutzt, ${missingDerivativeOriginalCount} mit fehlenden Derivaten.
         </p>
         <p class="muted-note">
           Konverter-Status: AVIF (${toolingStatus.avifenc.available ? "OK" : "Fehlt"}: <code>${escapeHtml(toolingStatus.avifenc.command)}</code>),
           WEBP (${toolingStatus.cwebp.available ? "OK" : "Fehlt"}: <code>${escapeHtml(toolingStatus.cwebp.command)}</code>)
         </p>
+        <form method="get" action="/admin/media" class="action-row">
+          <label>
+            <input type="checkbox" name="missingOnly" value="1" ${onlyMissingDerivatives ? "checked" : ""} />
+            Nur Bilder mit fehlenden AVIF/WEBP-Derivaten anzeigen
+          </label>
+          <button type="submit" class="secondary tiny">Filter anwenden</button>
+        </form>
         <form method="post" action="/admin/media/derivatives/backfill" class="action-row">
           <input type="hidden" name="_csrf" value="${escapeHtml(request.csrfToken ?? "")}" />
           <label>Max. Bilder
@@ -2255,7 +2313,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
           </label>
           <button type="submit" ${toolingStatus.avifenc.available && toolingStatus.cwebp.available ? "" : "disabled"}>Konvertierung starten</button>
         </form>
-        ${renderMediaTable(request.csrfToken ?? "", report)}
+        ${renderMediaTable(request.csrfToken ?? "", tableEntries, { onlyMissingDerivatives })}
         ${renderMissingMediaReferences(report)}
       </section>
     `;
