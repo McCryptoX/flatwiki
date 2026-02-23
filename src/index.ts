@@ -7,15 +7,19 @@ import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import { config } from "./config.js";
-import { attachCurrentUser, requireAuthOrPublicRead } from "./lib/auth.js";
+import { attachCurrentUser } from "./lib/auth.js";
 import { themeInitCspHash, themeCssCspHash } from "./lib/render.js";
 import { ensureDefaultCategory } from "./lib/categoryStore.js";
 import { initBackupAutomation } from "./lib/backupStore.js";
 import { ensureDir, ensureFile } from "./lib/fileStore.js";
 import { ensureDefaultTemplates } from "./lib/templateStore.js";
-import { initRuntimeSettings } from "./lib/runtimeSettingsStore.js";
+import { getPublicReadEnabled, getUploadDerivativesEnabled, initRuntimeSettings } from "./lib/runtimeSettingsStore.js";
 import { ensureSearchIndexConsistency } from "./lib/searchIndexStore.js";
 import { purgeExpiredSessions } from "./lib/sessionStore.js";
+import { resolveUploadAccess } from "./lib/uploadAccessPolicy.js";
+import { normalizeUploadFileName } from "./lib/mediaStore.js";
+import { resolveNegotiatedUploadPath } from "./lib/uploadDerivatives.js";
+import { getUploadCacheControl } from "./lib/uploadResponsePolicy.js";
 import { ensureInitialAdmin, migrateUserSecretStorage } from "./lib/userStore.js";
 import { registerAccountRoutes } from "./routes/accountRoutes.js";
 import { registerAdminRoutes } from "./routes/adminRoutes.js";
@@ -100,12 +104,30 @@ const registerPlugins = async (): Promise<void> => {
 
   app.addHook("preHandler", attachCurrentUser);
 
-  // Auth-Check für /uploads/: nur für eingeloggte Nutzer oder bei aktiviertem
-  // public-read-Modus zugänglich – konsistent mit dem restlichen Auth-Verhalten.
+  // Uploads have a dedicated gate:
+  // - private mode: authenticated users only (401 otherwise)
+  // - public-read mode: readable without auth
   app.addHook("preHandler", async (request, reply) => {
     if (request.url.startsWith("/uploads/")) {
-      await requireAuthOrPublicRead(request, reply);
+      const decision = resolveUploadAccess({
+        isAuthenticated: Boolean(request.currentUser),
+        publicReadEnabled: getPublicReadEnabled()
+      });
+      if (!decision.allowed) {
+        return reply.code(decision.statusCode ?? 401).type("text/plain; charset=utf-8").send("Nicht angemeldet.");
+      }
     }
+  });
+
+  app.addHook("onSend", async (request, reply, payload) => {
+    if (!request.url.startsWith("/uploads/")) {
+      return payload;
+    }
+
+    reply.header("Cache-Control", getUploadCacheControl(getPublicReadEnabled()));
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("Cross-Origin-Resource-Policy", "same-origin");
+    return payload;
   });
 
   await app.register(fastifyStatic, {
@@ -114,17 +136,44 @@ const registerPlugins = async (): Promise<void> => {
     maxAge: 365 * 24 * 60 * 60 * 1000, // 1 Jahr für versionierte Assets (?v=X)
     immutable: true
   });
-
-  await app.register(fastifyStatic, {
-    root: config.uploadDir,
-    prefix: "/uploads/",
-    decorateReply: false,
-    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 Tage für Uploads
-  });
 };
 
 const registerRoutes = async (): Promise<void> => {
   app.get("/health", async () => ({ status: "ok", at: new Date().toISOString() }));
+  app.route({
+    method: ["GET", "HEAD"],
+    url: "/uploads/*",
+    async handler(request, reply) {
+      const params = request.params as { "*": string };
+      const query = request.query as { format?: string };
+      const normalized = normalizeUploadFileName(String(params["*"] ?? ""));
+      if (!normalized) {
+        return reply.code(404).type("text/plain; charset=utf-8").send("Nicht gefunden.");
+      }
+
+      const rawFormat = String(query.format ?? "").trim().toLowerCase();
+      const requestedFormat: "auto" | "avif" | "webp" | "original" =
+        rawFormat === "avif" || rawFormat === "webp" || rawFormat === "original" ? rawFormat : "auto";
+
+      const resolvedPath = await resolveNegotiatedUploadPath({
+        originalRelativePath: normalized,
+        uploadRootDir: config.uploadDir,
+        acceptHeader: Array.isArray(request.headers.accept) ? request.headers.accept.join(",") : request.headers.accept,
+        enabled: getUploadDerivativesEnabled(),
+        requestedFormat
+      });
+      reply.header("Vary", "Accept");
+      const lowerResolved = resolvedPath.toLowerCase();
+      const variant = lowerResolved.endsWith(".avif") ? "avif" : lowerResolved.endsWith(".webp") ? "webp" : "original";
+      reply.header("X-FlatWiki-Upload-Variant", variant);
+
+      try {
+        return reply.sendFile(resolvedPath, config.uploadDir);
+      } catch {
+        return reply.code(404).type("text/plain; charset=utf-8").send("Nicht gefunden.");
+      }
+    }
+  });
 
   await registerSetupRoutes(app);
   await registerAuthRoutes(app);
@@ -134,6 +183,33 @@ const registerRoutes = async (): Promise<void> => {
   await registerAccountRoutes(app);
   await registerSeoRoutes(app);
   await registerPublicRoutes(app);
+};
+
+const registerErrorHandler = (): void => {
+  app.setErrorHandler((error, request, reply) => {
+    request.log.error(
+      {
+        err: error,
+        route: request.url,
+        method: request.method
+      },
+      "Unhandled request error"
+    );
+
+    if (reply.sent) return;
+
+    const errorLike = error as Error & { statusCode?: number };
+    const statusCode = typeof errorLike.statusCode === "number" && errorLike.statusCode >= 400 ? errorLike.statusCode : 500;
+    const isApiRequest = request.url.startsWith("/api/");
+    const safeMessage = statusCode >= 500 ? "Interner Serverfehler." : errorLike.message || "Anfrage fehlgeschlagen.";
+
+    if (isApiRequest) {
+      void reply.code(statusCode).send({ ok: false, error: safeMessage });
+      return;
+    }
+
+    void reply.code(statusCode).type("text/plain; charset=utf-8").send(safeMessage);
+  });
 };
 
 const start = async (): Promise<void> => {
@@ -154,6 +230,7 @@ const start = async (): Promise<void> => {
       app.log.info({ reason: indexCheck.reason }, "Suchindex-Konsistenz beim Start geprüft.");
     }
     await registerPlugins();
+    registerErrorHandler();
 
     const adminResult = await ensureInitialAdmin();
     if (adminResult.created) {

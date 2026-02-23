@@ -251,7 +251,15 @@ const toSafeHtml = (rawHtml: string): string => {
     allowedAttributes: {
       a: ["href", "target", "rel"],
       img: ["src", "alt", "title"],
-      "*": ["class", "id"]
+      code: ["class"],
+      pre: ["class"],
+      span: ["class"],
+      h1: ["id"],
+      h2: ["id"],
+      h3: ["id"],
+      h4: ["id"],
+      h5: ["id"],
+      h6: ["id"]
     },
     allowedSchemes: ["http", "https", "mailto"]
   });

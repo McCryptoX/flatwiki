@@ -1,8 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { createHash, randomUUID } from "node:crypto";
-import { createReadStream, createWriteStream } from "node:fs";
+import { createReadStream } from "node:fs";
 import path from "node:path";
-import { pipeline } from "node:stream/promises";
 import { requireAdmin, requireAuth, requireAuthOrPublicRead, requireFormCsrfToken, verifySessionCsrfToken } from "../lib/auth.js";
 import {
   buildAttachmentDownloadName,
@@ -25,7 +24,7 @@ import { ensureDir, removeFile, safeResolve } from "../lib/fileStore.js";
 import { cleanupUnusedUploads, extractUploadReferencesFromMarkdown } from "../lib/mediaStore.js";
 import { listTrendingTopics, recordPageView } from "../lib/pageViewStore.js";
 import { escapeHtml, formatDate, renderLayout, renderPageList } from "../lib/render.js";
-import { getCommentModerationSettings, getUiMode, type UiMode } from "../lib/runtimeSettingsStore.js";
+import { getCommentModerationSettings, getUiMode, getUploadDerivativesEnabled, type UiMode } from "../lib/runtimeSettingsStore.js";
 import { removeSearchIndexBySlug, upsertSearchIndexBySlug } from "../lib/searchIndexStore.js";
 import { buildUnifiedDiff } from "../lib/textDiff.js";
 import { findUserByUsername, listUsers } from "../lib/userStore.js";
@@ -34,6 +33,8 @@ import type { PublicUser, SecurityProfile, WikiPageSummary } from "../types.js";
 import { getPageWorkflow, removeWorkflowForPage, setPageWorkflow, type WorkflowStatus } from "../lib/workflowStore.js";
 import { parseSearchQuery } from "../lib/searchQuery.js";
 import { sendMentionNotification, sendPageUpdateNotification } from "../lib/mailer.js";
+import { persistValidatedImageUpload } from "../lib/uploadImageValidation.js";
+import { createCliDerivativeConverter, generateMissingDerivativesForSource } from "../lib/uploadDerivativeBackfill.js";
 import {
   canUserAccessPage,
   deletePage,
@@ -281,27 +282,7 @@ const groupPagesByInitial = (
   }));
 };
 
-const MIME_EXTENSION_MAP: Record<string, string> = {
-  "image/png": "png",
-  "image/jpeg": "jpg",
-  "image/webp": "webp",
-  "image/gif": "gif",
-  "image/avif": "avif"
-};
-
-const ALLOWED_UPLOAD_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp", "gif", "avif"]);
-
 const escapeMarkdownText = (value: string): string => value.replace(/([\\`*_[\]])/g, "\\$1");
-
-const normalizeUploadExtension = (filename: string | undefined, mimeType: string): string | null => {
-  const fromName = path.extname(filename ?? "").replace(".", "").toLowerCase();
-  if (fromName && ALLOWED_UPLOAD_EXTENSIONS.has(fromName)) {
-    return fromName === "jpeg" ? "jpg" : fromName;
-  }
-
-  const fromMime = MIME_EXTENSION_MAP[mimeType];
-  return fromMime ?? null;
-};
 
 const sanitizeAltText = (filename: string): string => {
   const base = path.parse(filename).name;
@@ -385,6 +366,27 @@ const paginate = <T>(items: T[], requestedPage: number, pageSize: number): { pag
     totalPages,
     slice: items.slice(offset, offset + safePageSize)
   };
+};
+
+const buildSlugWithSuffix = (baseSlug: string, sequence: number): string => {
+  if (sequence <= 1) return baseSlug;
+  const suffix = `-${sequence}`;
+  const maxBaseLength = Math.max(1, 80 - suffix.length);
+  const trimmedBase = baseSlug.slice(0, maxBaseLength).replace(/-+$/g, "") || baseSlug.slice(0, maxBaseLength);
+  return `${trimmedBase}${suffix}`;
+};
+
+const resolveNextAvailableAutoSlug = async (baseSlug: string, maxAttempts = 500): Promise<string | null> => {
+  for (let i = 1; i <= maxAttempts; i += 1) {
+    const candidate = buildSlugWithSuffix(baseSlug, i);
+    if (!isValidSlug(candidate)) continue;
+    const existing = await getPage(candidate);
+    if (!existing) {
+      return candidate;
+    }
+  }
+
+  return null;
 };
 
 const renderPager = (
@@ -1982,7 +1984,10 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     const uiMode = getUiMode();
 
     const title = readSingle(body.title).trim();
-    const slug = (readSingle(body.slug).trim() || slugifyTitle(title)).toLowerCase();
+    const slugInput = readSingle(body.slug).trim().toLowerCase();
+    const slugWasExplicitlyProvided = slugInput.length > 0;
+    const requestedAutoSlug = slugifyTitle(title).toLowerCase();
+    let slug = (slugInput || requestedAutoSlug).toLowerCase();
     const tagsRaw = readSingle(body.tags);
     const tags = tagsRaw
       .split(",")
@@ -2052,22 +2057,43 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
       return reply.redirect(`/new?${query}`);
     }
 
-    const existing = await getPage(slug);
-    if (existing) {
-      const query = buildEditorRedirectQuery({
-        error: "Seitenadresse existiert bereits",
-        title,
-        slug,
-        tags: tagsRaw,
-        content,
-        categoryId: selectedCategoryId,
-        securityProfile: normalizedSettings.securityProfile,
-        visibility,
-        allowedUsers,
-        allowedGroups,
-        encrypted: normalizedSettings.encrypted
-      });
-      return reply.redirect(`/new?${query}`);
+    if (slugWasExplicitlyProvided) {
+      const existing = await getPage(slug);
+      if (existing) {
+        const query = buildEditorRedirectQuery({
+          error: "Seitenadresse existiert bereits",
+          title,
+          slug,
+          tags: tagsRaw,
+          content,
+          categoryId: selectedCategoryId,
+          securityProfile: normalizedSettings.securityProfile,
+          visibility,
+          allowedUsers,
+          allowedGroups,
+          encrypted: normalizedSettings.encrypted
+        });
+        return reply.redirect(`/new?${query}`);
+      }
+    } else {
+      const resolvedSlug = await resolveNextAvailableAutoSlug(slug);
+      if (!resolvedSlug) {
+        const query = buildEditorRedirectQuery({
+          error: "Konnte keine freie Seitenadresse erzeugen",
+          title,
+          slug,
+          tags: tagsRaw,
+          content,
+          categoryId: selectedCategoryId,
+          securityProfile: normalizedSettings.securityProfile,
+          visibility,
+          allowedUsers,
+          allowedGroups,
+          encrypted: normalizedSettings.encrypted
+        });
+        return reply.redirect(`/new?${query}`);
+      }
+      slug = resolvedSlug;
     }
 
     const result = await savePage({
@@ -2111,8 +2137,11 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
       actorId: request.currentUser?.id,
       targetId: slug
     });
-
-    return reply.redirect(`/wiki/${encodeURIComponent(slug)}`);
+    const slugAdjusted = !slugWasExplicitlyProvided && slug !== requestedAutoSlug;
+    const notice = slugAdjusted ? `Seitenadresse '${requestedAutoSlug}' war bereits belegt und wurde auf '${slug}' angepasst.` : "";
+    return reply.redirect(
+      `/wiki/${encodeURIComponent(slug)}${notice ? `?notice=${encodeURIComponent(notice)}` : ""}`
+    );
   });
 
   app.get("/wiki/:slug/edit", { preHandler: [requireAuth] }, async (request, reply) => {
@@ -2263,6 +2292,8 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
 
     const uploaded: Array<{ url: string; markdown: string; originalName: string; storedName: string }> = [];
     const rejected: string[] = [];
+    const derivativesEnabled = getUploadDerivativesEnabled();
+    const derivativeConverter = derivativesEnabled ? await createCliDerivativeConverter().catch(() => null) : null;
 
     try {
       for await (const part of request.parts()) {
@@ -2275,17 +2306,19 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
           continue;
         }
 
-        const extension = normalizeUploadExtension(part.filename, part.mimetype);
-        if (!extension || !part.mimetype.startsWith("image/")) {
-          rejected.push(`${part.filename ?? "Datei"}: Nicht unterstütztes Bildformat.`);
-          part.file.resume();
+        const extension = path.extname(part.filename ?? "").replace(/^\./, "").trim().toLowerCase() || "img";
+        const storedName = `${Date.now()}-${randomUUID().replaceAll("-", "")}.${extension}`;
+        const persisted = await persistValidatedImageUpload({
+          stream: part.file,
+          uploadTargetDir,
+          storedName,
+          fileName: part.filename,
+          mimeType: part.mimetype
+        });
+        if (!persisted.ok) {
+          rejected.push(`${part.filename ?? "Datei"}: ${persisted.error}`);
           continue;
         }
-
-        const storedName = `${Date.now()}-${randomUUID().replaceAll("-", "")}.${extension}`;
-        const targetPath = safeResolve(uploadTargetDir, storedName);
-
-        await pipeline(part.file, createWriteStream(targetPath, { flags: "wx" }));
 
         const url = `/uploads/${encodeURIComponent(uploadSubDir)}/${storedName}`;
         const alt = escapeMarkdownText(sanitizeAltText(part.filename ?? "Bild"));
@@ -2296,6 +2329,26 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
           originalName: part.filename ?? storedName,
           storedName
         });
+
+        if (derivativesEnabled && derivativeConverter) {
+          const relativePath = `${uploadSubDir}/${storedName}`;
+          const derivativeResult = await generateMissingDerivativesForSource({
+            uploadRootDir: config.uploadDir,
+            relativePath,
+            sourceType: persisted.type,
+            timeoutMsPerFile: 20_000,
+            converter: derivativeConverter
+          });
+          if (derivativeResult.errors > 0) {
+            request.log.warn(
+              {
+                file: relativePath,
+                errors: derivativeResult.errors
+              },
+              "Upload-Derivate konnten nicht vollständig erzeugt werden."
+            );
+          }
+        }
       }
     } catch (error) {
       request.log.warn({ error }, "Upload fehlgeschlagen");

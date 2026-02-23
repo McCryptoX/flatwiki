@@ -9,6 +9,7 @@ interface RuntimeSettingsFile {
   indexBackend?: string;
   uiMode?: string;
   publicRead?: boolean;
+  uploadDerivativesEnabled?: boolean;
   smtp?: {
     host?: string;
     port?: number | string;
@@ -39,6 +40,7 @@ interface RuntimeSettings {
   indexBackend: IndexBackend;
   uiMode: UiMode;
   publicRead: boolean;
+  uploadDerivativesEnabled: boolean;
   smtp: RuntimeSmtpSettings;
   comments: RuntimeCommentModerationSettings;
   updatedAt?: string;
@@ -54,6 +56,7 @@ let initialized = false;
 let currentIndexBackend: IndexBackend = config.indexBackend;
 let currentUiMode: UiMode = "simple";
 let currentPublicRead = false;
+let currentUploadDerivativesEnabled = config.uploadDerivativesEnabled;
 let mutationQueue: Promise<void> = Promise.resolve();
 let currentSmtp: RuntimeSmtpSettings = {
   host: config.smtpHost,
@@ -160,6 +163,7 @@ export const initRuntimeSettings = async (): Promise<void> => {
   currentIndexBackend = normalizeIndexBackend(file.indexBackend ?? config.indexBackend);
   currentUiMode = normalizeUiMode(file.uiMode);
   currentPublicRead = normalizePublicRead(file.publicRead);
+  currentUploadDerivativesEnabled = normalizePublicRead(file.uploadDerivativesEnabled ?? config.uploadDerivativesEnabled);
   currentSmtp = normalizeSmtpSettings(file.smtp, currentSmtp);
   currentCommentModeration = normalizeCommentModerationSettings(file.comments, currentCommentModeration);
 
@@ -188,6 +192,7 @@ const ensureInitialized = (): void => {
     currentIndexBackend = config.indexBackend;
     currentUiMode = "simple";
     currentPublicRead = false;
+    currentUploadDerivativesEnabled = config.uploadDerivativesEnabled;
     currentSmtp = {
       host: config.smtpHost,
       port: config.smtpPort,
@@ -219,6 +224,11 @@ export const getPublicReadEnabled = (): boolean => {
   return currentPublicRead;
 };
 
+export const getUploadDerivativesEnabled = (): boolean => {
+  ensureInitialized();
+  return currentUploadDerivativesEnabled;
+};
+
 export const getSmtpSettings = async (): Promise<RuntimeSmtpSettings> => {
   const file = await loadRuntimeSettingsFile();
   const smtp = normalizeSmtpSettings(file.smtp, currentSmtp);
@@ -232,11 +242,13 @@ export const getRuntimeSettings = async (): Promise<RuntimeSettings> => {
   const indexBackend = normalizeIndexBackend(file.indexBackend ?? currentIndexBackend);
   const uiMode = normalizeUiMode(file.uiMode ?? currentUiMode);
   const publicRead = normalizePublicRead(file.publicRead ?? currentPublicRead);
+  const uploadDerivativesEnabled = normalizePublicRead(file.uploadDerivativesEnabled ?? currentUploadDerivativesEnabled);
   const smtp = normalizeSmtpSettings(file.smtp, currentSmtp);
   const comments = normalizeCommentModerationSettings(file.comments, currentCommentModeration);
   currentIndexBackend = indexBackend;
   currentUiMode = uiMode;
   currentPublicRead = publicRead;
+  currentUploadDerivativesEnabled = uploadDerivativesEnabled;
   currentSmtp = smtp;
   currentCommentModeration = comments;
   initialized = true;
@@ -245,6 +257,7 @@ export const getRuntimeSettings = async (): Promise<RuntimeSettings> => {
     indexBackend,
     uiMode,
     publicRead,
+    uploadDerivativesEnabled,
     smtp,
     comments,
     ...(typeof file.updatedAt === "string" && file.updatedAt.trim().length > 0 ? { updatedAt: file.updatedAt } : {}),
@@ -306,6 +319,7 @@ export const setSmtpSettings = async (input: {
       indexBackend: normalizeIndexBackend(file.indexBackend ?? currentIndexBackend),
       uiMode: normalizeUiMode(file.uiMode ?? currentUiMode),
       publicRead: normalizePublicRead(file.publicRead ?? currentPublicRead),
+      uploadDerivativesEnabled: normalizePublicRead(file.uploadDerivativesEnabled ?? currentUploadDerivativesEnabled),
       smtp: {
         host: nextSmtp.host,
         port: nextSmtp.port,
@@ -359,6 +373,7 @@ export const setIndexBackend = async (input: {
       indexBackend: normalized,
       uiMode: normalizeUiMode(file.uiMode ?? currentUiMode),
       publicRead: normalizePublicRead(file.publicRead ?? currentPublicRead),
+      uploadDerivativesEnabled: normalizePublicRead(file.uploadDerivativesEnabled ?? currentUploadDerivativesEnabled),
       updatedAt: new Date().toISOString(),
       ...(input.updatedBy ? { updatedBy: input.updatedBy } : {})
     };
@@ -399,6 +414,7 @@ export const setUiMode = async (input: {
       indexBackend: normalizeIndexBackend(file.indexBackend ?? currentIndexBackend),
       uiMode: normalized,
       publicRead: normalizePublicRead(file.publicRead ?? currentPublicRead),
+      uploadDerivativesEnabled: normalizePublicRead(file.uploadDerivativesEnabled ?? currentUploadDerivativesEnabled),
       updatedAt: new Date().toISOString(),
       ...(input.updatedBy ? { updatedBy: input.updatedBy } : {})
     };
@@ -442,6 +458,7 @@ export const setPublicRead = async (input: {
       indexBackend: normalizeIndexBackend(file.indexBackend ?? currentIndexBackend),
       uiMode: normalizeUiMode(file.uiMode ?? currentUiMode),
       publicRead: normalized,
+      uploadDerivativesEnabled: normalizePublicRead(file.uploadDerivativesEnabled ?? currentUploadDerivativesEnabled),
       updatedAt: new Date().toISOString(),
       ...(input.updatedBy ? { updatedBy: input.updatedBy } : {})
     };
@@ -455,6 +472,122 @@ export const setPublicRead = async (input: {
       changed,
       publicRead: normalized
     };
+  });
+
+export const setUploadDerivativesEnabled = async (input: {
+  enabled: string | boolean;
+  updatedBy?: string;
+}): Promise<{ ok: boolean; changed: boolean; uploadDerivativesEnabled: boolean; error?: string }> =>
+  withMutationLock(async () => {
+    const normalized = normalizePublicRead(input.enabled);
+
+    if (typeof input.enabled === "string") {
+      const requested = input.enabled.trim().toLowerCase();
+      if (!["1", "0", "true", "false", "yes", "no", "on", "off"].includes(requested)) {
+        return {
+          ok: false,
+          changed: false,
+          uploadDerivativesEnabled: currentUploadDerivativesEnabled,
+          error: "Ungültiger Wert für Upload-Derivate."
+        };
+      }
+    }
+
+    const file = await loadRuntimeSettingsFile();
+    const previous = normalizePublicRead(file.uploadDerivativesEnabled ?? currentUploadDerivativesEnabled);
+    const changed = previous !== normalized;
+
+    const next: RuntimeSettingsFile = {
+      ...file,
+      indexBackend: normalizeIndexBackend(file.indexBackend ?? currentIndexBackend),
+      uiMode: normalizeUiMode(file.uiMode ?? currentUiMode),
+      publicRead: normalizePublicRead(file.publicRead ?? currentPublicRead),
+      uploadDerivativesEnabled: normalized,
+      updatedAt: new Date().toISOString(),
+      ...(input.updatedBy ? { updatedBy: input.updatedBy } : {})
+    };
+
+    await writeJsonFile(config.runtimeSettingsFile, next);
+    currentUploadDerivativesEnabled = normalized;
+    initialized = true;
+
+    return {
+      ok: true,
+      changed,
+      uploadDerivativesEnabled: normalized
+    };
+  });
+
+export const validateAndRepairRuntimeSettings = async (input?: {
+  updatedBy?: string;
+}): Promise<{ ok: boolean; changed: boolean; fixes: string[] }> =>
+  withMutationLock(async () => {
+    const file = await loadRuntimeSettingsFile();
+    const fixes: string[] = [];
+
+    const normalizedIndexBackend = normalizeIndexBackend(file.indexBackend ?? currentIndexBackend);
+    if ((file.indexBackend ?? "").trim().toLowerCase() !== normalizedIndexBackend) {
+      fixes.push("Index-Backend auf gültigen Wert normalisiert.");
+    }
+
+    const normalizedUiMode = normalizeUiMode(file.uiMode ?? currentUiMode);
+    if ((file.uiMode ?? "").trim().toLowerCase() !== normalizedUiMode) {
+      fixes.push("Bedienmodus auf gültigen Wert normalisiert.");
+    }
+
+    const normalizedPublicRead = normalizePublicRead(file.publicRead ?? currentPublicRead);
+    const normalizedUploadDerivatives = normalizePublicRead(file.uploadDerivativesEnabled ?? currentUploadDerivativesEnabled);
+
+    const normalizedComments = normalizeCommentModerationSettings(file.comments, currentCommentModeration);
+    const rawTrusted = Array.isArray(file.comments?.trustedAutoApproveUsernames) ? file.comments?.trustedAutoApproveUsernames : [];
+    if (rawTrusted.length !== normalizedComments.trustedAutoApproveUsernames.length) {
+      fixes.push("Doppelte/ungültige Trusted-Usernamen bereinigt.");
+    }
+
+    const normalizedSmtp = normalizeSmtpSettings(file.smtp, currentSmtp);
+    const normalized: RuntimeSettingsFile = {
+      ...file,
+      indexBackend: normalizedIndexBackend,
+      uiMode: normalizedUiMode,
+      publicRead: normalizedPublicRead,
+      uploadDerivativesEnabled: normalizedUploadDerivatives,
+      smtp: {
+        host: normalizedSmtp.host,
+        port: normalizedSmtp.port,
+        secure: normalizedSmtp.secure,
+        user: normalizedSmtp.user,
+        ...(normalizedSmtp.pass
+          ? (() => {
+              const encrypted = encryptSecret(normalizedSmtp.pass);
+              if (encrypted) return { passEnc: encrypted };
+              return { pass: normalizedSmtp.pass };
+            })()
+          : {}),
+        from: normalizedSmtp.from
+      },
+      comments: {
+        moderationMode: normalizedComments.moderationMode,
+        trustedAutoApproveUsernames: normalizedComments.trustedAutoApproveUsernames
+      },
+      updatedAt: new Date().toISOString(),
+      ...(input?.updatedBy ? { updatedBy: input.updatedBy } : {})
+    };
+
+    const changed = JSON.stringify(file) !== JSON.stringify(normalized);
+    if (!changed) {
+      return { ok: true, changed: false, fixes: [] };
+    }
+
+    await writeJsonFile(config.runtimeSettingsFile, normalized);
+    currentIndexBackend = normalizedIndexBackend;
+    currentUiMode = normalizedUiMode;
+    currentPublicRead = normalizedPublicRead;
+    currentUploadDerivativesEnabled = normalizedUploadDerivatives;
+    currentSmtp = normalizedSmtp;
+    currentCommentModeration = normalizedComments;
+    initialized = true;
+
+    return { ok: true, changed: true, fixes };
   });
 
 export const setCommentModerationSettings = async (input: {

@@ -174,7 +174,7 @@ Wichtig:
 
 ## 12. Dateibasiertes Datenmodell
 
-FlatWiki speichert ohne klassische SQL-Datenbank als primaere Quelle:
+FlatWiki speichert ohne verpflichtende SQL-Datenbank als primaere Quelle:
 
 - `data/wiki/*.md` -> Wiki-Seiten (Quelle der Wahrheit)
 - `data/users.json` -> Benutzerkonten

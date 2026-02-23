@@ -50,6 +50,7 @@ const appendMissingEnvKeys = (filePath: string): InstallerResult => {
     ATTACHMENT_SCAN_MODE: "auto",
     ATTACHMENT_SCANNER_CMD: "clamscan",
     TRUST_PROXY: "false",
+    UPLOAD_DERIVATIVES_ENABLED: "false",
     BOOTSTRAP_ADMIN_USERNAME: "admin",
     AUDIT_LOG_MAX_SIZE_MB: "10",
     AUDIT_LOG_MAX_AGE_DAYS: "90",
@@ -97,7 +98,8 @@ const hasExternalConfig = [
   "INDEX_BACKEND",
   "ATTACHMENT_SCAN_MODE",
   "ATTACHMENT_SCANNER_CMD",
-  "TRUST_PROXY"
+  "TRUST_PROXY",
+  "UPLOAD_DERIVATIVES_ENABLED"
 ].some((key) => Boolean(process.env[key]));
 
 const installerResult = fs.existsSync(configEnvPath) || !hasExternalConfig
@@ -275,6 +277,7 @@ const collectConfigValidationErrors = (env: NodeJS.ProcessEnv): string[] => {
   expectBoolean("BACKUP_AUTO_ENABLED");
   expectBoolean("SMTP_SECURE");
   expectBoolean("TRUST_PROXY");
+  expectBoolean("UPLOAD_DERIVATIVES_ENABLED");
 
   expectEnum("INDEX_BACKEND", ["flat", "sqlite"]);
   expectEnum("ATTACHMENT_SCAN_MODE", ["auto", "required", "off"]);
@@ -302,6 +305,7 @@ export const config = {
   cookieSecret: process.env.COOKIE_SECRET ?? "dev-only-change-cookie-secret-please",
   isProduction: process.env.NODE_ENV === "production",
   trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
+  uploadDerivativesEnabled: parseBoolean(process.env.UPLOAD_DERIVATIVES_ENABLED, false),
   sessionTtlHours: parsePositiveInt(process.env.SESSION_TTL_HOURS, 12),
   backupAutoEnabled: parseBoolean(process.env.BACKUP_AUTO_ENABLED, false),
   backupAutoIntervalHours: parsePositiveInt(process.env.BACKUP_AUTO_INTERVAL_HOURS, 24),

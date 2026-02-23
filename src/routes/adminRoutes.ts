@@ -72,10 +72,13 @@ import {
   setIndexBackend,
   setPublicRead,
   setSmtpSettings,
+  setUploadDerivativesEnabled,
   setUiMode,
+  validateAndRepairRuntimeSettings,
   type RuntimeSmtpSettings,
   type UiMode
 } from "../lib/runtimeSettingsStore.js";
+import { backfillUploadDerivatives, getUploadDerivativeToolingStatus } from "../lib/uploadDerivativeBackfill.js";
 import { deleteUserSessions } from "../lib/sessionStore.js";
 import { convertWikitextToMarkdown } from "../lib/wikitextImport.js";
 import { canUserAccessPage, getPage, listBrokenInternalLinks, listPages, savePage, slugifyTitle } from "../lib/wikiStore.js";
@@ -1239,7 +1242,9 @@ const renderSslManagement = (inspection: SslStatusInspection): string => {
 const renderUiModeManagement = (
   csrfToken: string,
   currentUiMode: UiMode,
-  publicReadEnabled: boolean
+  publicReadEnabled: boolean,
+  uploadDerivativesEnabled: boolean,
+  toolingStatus: Awaited<ReturnType<typeof getUploadDerivativeToolingStatus>>
 ): string => `
   <section class="content-wrap stack">
     <div class="admin-index-panel stack">
@@ -1250,6 +1255,8 @@ const renderUiModeManagement = (
         <strong>Erweitert:</strong> alle technischen Bereiche sichtbar (Backups, Versionen, Link-Check, Suchindex, TLS/SSL).
         <br />
         <strong>Öffentlich lesen:</strong> Gäste dürfen Artikel lesen und suchen. Schreiben/Bearbeiten bleibt nur mit Login.
+        <br />
+        <strong>Upload-Derivate:</strong> liefert AVIF/WEBP bevorzugt aus und erzeugt bei Upload neue Derivate automatisch.
       </p>
       <form method="post" action="/admin/ui" class="stack">
         <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}" />
@@ -1265,8 +1272,29 @@ const renderUiModeManagement = (
             <option value="1" ${publicReadEnabled ? "selected" : ""}>An (Lesen ohne Login)</option>
           </select>
         </label>
+        <label>Upload-Derivate (AVIF/WEBP)
+          <select name="uploadDerivativesEnabled">
+            <option value="0" ${!uploadDerivativesEnabled ? "selected" : ""}>Aus</option>
+            <option value="1" ${uploadDerivativesEnabled ? "selected" : ""}>An</option>
+          </select>
+        </label>
+        <p class="muted-note">
+          Tool-Status: AVIF (${toolingStatus.avifenc.available ? "OK" : "Fehlt"}: <code>${escapeHtml(toolingStatus.avifenc.command)}</code>),
+          WEBP (${toolingStatus.cwebp.available ? "OK" : "Fehlt"}: <code>${escapeHtml(toolingStatus.cwebp.command)}</code>)
+          ${
+            toolingStatus.avifenc.available && toolingStatus.cwebp.available
+              ? ""
+              : `<br />Fehlende Tools in Docker nachinstallieren via <code>docker compose up -d --build</code>.`
+          }
+        </p>
         <div class="action-row">
           <button type="submit">Einstellungen speichern</button>
+        </div>
+      </form>
+      <form method="post" action="/admin/ui/repair" class="stack">
+        <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}" />
+        <div class="action-row">
+          <button type="submit" class="secondary">Konfiguration prüfen & reparieren</button>
         </div>
       </form>
     </div>
@@ -1369,7 +1397,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
 
   app.get("/admin/ui", { preHandler: [requireAdmin] }, async (request, reply) => {
     const query = asRecord(request.query);
-    const runtimeSettings = await getRuntimeSettings();
+    const [runtimeSettings, toolingStatus] = await Promise.all([getRuntimeSettings(), getUploadDerivativeToolingStatus()]);
     const currentUiMode = getUiMode();
 
     const body = `
@@ -1378,7 +1406,13 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
         description: "Wähle, wie umfangreich die Admin-Oberfläche angezeigt wird.",
         active: "ui"
       })}
-      ${renderUiModeManagement(request.csrfToken ?? "", currentUiMode, runtimeSettings.publicRead)}
+      ${renderUiModeManagement(
+        request.csrfToken ?? "",
+        currentUiMode,
+        runtimeSettings.publicRead,
+        runtimeSettings.uploadDerivativesEnabled,
+        toolingStatus
+      )}
     `;
 
     return reply.type("text/html").send(
@@ -1416,12 +1450,23 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
       return reply.redirect(`/admin/ui?error=${encodeURIComponent(publicReadResult.error ?? "Öffentlicher Lesezugriff konnte nicht gespeichert werden.")}`);
     }
 
+    const uploadDerivativesResult = await setUploadDerivativesEnabled({
+      enabled: body.uploadDerivativesEnabled ?? "0",
+      ...(request.currentUser?.username ? { updatedBy: request.currentUser.username } : {})
+    });
+    if (!uploadDerivativesResult.ok) {
+      return reply.redirect(
+        `/admin/ui?error=${encodeURIComponent(uploadDerivativesResult.error ?? "Upload-Derivate konnten nicht gespeichert werden.")}`
+      );
+    }
+
     await writeAuditLog({
       action: "admin_ui_mode_changed",
       actorId: request.currentUser?.id,
       details: {
         mode: modeResult.uiMode,
-        publicRead: publicReadResult.publicRead
+        publicRead: publicReadResult.publicRead,
+        uploadDerivativesEnabled: uploadDerivativesResult.uploadDerivativesEnabled
       }
     });
 
@@ -1432,7 +1477,35 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
     if (publicReadResult.changed) {
       changedParts.push(`Öffentlich lesen: ${publicReadResult.publicRead ? "An" : "Aus"}`);
     }
+    if (uploadDerivativesResult.changed) {
+      changedParts.push(`Upload-Derivate: ${uploadDerivativesResult.uploadDerivativesEnabled ? "An" : "Aus"}`);
+    }
     const notice = changedParts.length > 0 ? `Gespeichert (${changedParts.join(", ")}).` : "Einstellungen unverändert.";
+    return reply.redirect(`/admin/ui?notice=${encodeURIComponent(notice)}`);
+  });
+
+  app.post("/admin/ui/repair", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const body = asRecord(request.body);
+    if (!verifySessionCsrfToken(request, body._csrf ?? "")) {
+      return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
+    }
+
+    const repair = await validateAndRepairRuntimeSettings({
+      ...(request.currentUser?.username ? { updatedBy: request.currentUser.username } : {})
+    });
+
+    await writeAuditLog({
+      action: "admin_runtime_settings_repair",
+      actorId: request.currentUser?.id,
+      details: {
+        changed: repair.changed,
+        fixes: repair.fixes
+      }
+    });
+
+    const notice = repair.changed
+      ? `Konfiguration repariert (${repair.fixes.length > 0 ? repair.fixes.join(" | ") : "Normalisierung durchgeführt"}).`
+      : "Konfiguration ist konsistent. Keine Änderungen nötig.";
     return reply.redirect(`/admin/ui?notice=${encodeURIComponent(notice)}`);
   });
 
@@ -2134,7 +2207,7 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
 
   app.get("/admin/media", { preHandler: [requireAdmin] }, async (request, reply) => {
     const query = asRecord(request.query);
-    const report = await getUploadUsageReport();
+    const [report, toolingStatus] = await Promise.all([getUploadUsageReport(), getUploadDerivativeToolingStatus()]);
     const orphanCount = report.files.filter((file) => file.referencedBy.length === 0).length;
 
     const body = `
@@ -2142,16 +2215,46 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
         title: "Bildverwaltung",
         description: "Upload-Dateien prüfen, Referenzen nachvollziehen und unbenutzte Bilder entfernen.",
         active: "media",
-        actions: `<form method="post" action="/admin/media/cleanup" onsubmit="return confirm('Alle ungenutzten Bilddateien wirklich löschen?')">
-          <input type="hidden" name="_csrf" value="${escapeHtml(request.csrfToken ?? "")}" />
-          <button type="submit">Ungenutzte Bilder löschen</button>
-        </form>`
+        actions: `
+          <form method="post" action="/admin/media/cleanup" onsubmit="return confirm('Alle ungenutzten Bilddateien wirklich löschen?')">
+            <input type="hidden" name="_csrf" value="${escapeHtml(request.csrfToken ?? "")}" />
+            <button type="submit">Ungenutzte Bilder löschen</button>
+          </form>
+          <form method="post" action="/admin/media/derivatives/backfill">
+            <input type="hidden" name="_csrf" value="${escapeHtml(request.csrfToken ?? "")}" />
+            <input type="hidden" name="dryRun" value="0" />
+            <input type="hidden" name="limit" value="500" />
+            <input type="hidden" name="concurrency" value="2" />
+            <button type="submit" ${toolingStatus.avifenc.available && toolingStatus.cwebp.available ? "" : "disabled"}>Derivate-Backfill starten</button>
+          </form>
+        `
       })}
       <section class="content-wrap">
         <p>
           ${report.files.length} Upload-Datei(en), ${escapeHtml(formatFileSize(report.totalSizeBytes))} gesamt,
           ${orphanCount} ungenutzt.
         </p>
+        <p class="muted-note">
+          Derivate-Tools: AVIF (${toolingStatus.avifenc.available ? "OK" : "Fehlt"}: <code>${escapeHtml(toolingStatus.avifenc.command)}</code>),
+          WEBP (${toolingStatus.cwebp.available ? "OK" : "Fehlt"}: <code>${escapeHtml(toolingStatus.cwebp.command)}</code>)
+        </p>
+        <form method="post" action="/admin/media/derivatives/backfill" class="action-row">
+          <input type="hidden" name="_csrf" value="${escapeHtml(request.csrfToken ?? "")}" />
+          <label>Limit
+            <input type="number" name="limit" min="1" max="10000" value="500" />
+          </label>
+          <label>Concurrency
+            <input type="number" name="concurrency" min="1" max="8" value="2" />
+          </label>
+          <label>Seit Datum (optional)
+            <input type="date" name="since" />
+          </label>
+          <label>
+            <input type="checkbox" name="dryRun" value="1" />
+            Dry-Run
+          </label>
+          <button type="submit" ${toolingStatus.avifenc.available && toolingStatus.cwebp.available ? "" : "disabled"}>Derivate-Backfill ausführen</button>
+        </form>
         ${renderMediaTable(request.csrfToken ?? "", report)}
         ${renderMissingMediaReferences(report)}
       </section>
@@ -2242,6 +2345,62 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
         ? `Datei erzwungen gelöscht: ${normalizedFileName}`
         : `Datei gelöscht: ${normalizedFileName}`;
 
+    return reply.redirect(`/admin/media?notice=${encodeURIComponent(notice)}`);
+  });
+
+  app.post("/admin/media/derivatives/backfill", { preHandler: [requireAdmin] }, async (request, reply) => {
+    const body = asRecord(request.body);
+    if (!verifySessionCsrfToken(request, body._csrf ?? "")) {
+      return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
+    }
+
+    const tooling = await getUploadDerivativeToolingStatus();
+    if (!tooling.avifenc.available || !tooling.cwebp.available) {
+      return reply.redirect(
+        `/admin/media?error=${encodeURIComponent(
+          `Derivate-Tools fehlen (avifenc=${tooling.avifenc.available ? "ok" : "fehlt"}, cwebp=${tooling.cwebp.available ? "ok" : "fehlt"}). Bitte Container neu bauen.`
+        )}`
+      );
+    }
+
+    const dryRun = readCheckbox(body.dryRun);
+    const limit = Number.parseInt(body.limit ?? "500", 10);
+    const concurrency = Number.parseInt(body.concurrency ?? "2", 10);
+    const sinceRaw = (body.since ?? "").trim();
+    const sinceCandidate = sinceRaw ? new Date(sinceRaw) : null;
+    const since = sinceCandidate && Number.isFinite(sinceCandidate.getTime()) ? sinceCandidate : undefined;
+
+    if (!Number.isFinite(limit) || limit < 1 || limit > 10_000) {
+      return reply.redirect("/admin/media?error=Limit+muss+zwischen+1+und+10000+liegen");
+    }
+    if (!Number.isFinite(concurrency) || concurrency < 1 || concurrency > 8) {
+      return reply.redirect("/admin/media?error=Concurrency+muss+zwischen+1+und+8+liegen");
+    }
+    if (sinceRaw && !since) {
+      return reply.redirect("/admin/media?error=Ung%C3%BCltiges+since-Datum+(YYYY-MM-DD)");
+    }
+
+    const summary = await backfillUploadDerivatives({
+      uploadRootDir: config.uploadDir,
+      dryRun,
+      limit,
+      concurrency,
+      ...(since ? { since } : {})
+    });
+
+    await writeAuditLog({
+      action: "admin_media_derivatives_backfill",
+      actorId: request.currentUser?.id,
+      details: {
+        dryRun,
+        limit,
+        concurrency,
+        ...(since ? { since: since.toISOString() } : {}),
+        summary
+      }
+    });
+
+    const notice = `Backfill ${dryRun ? "Dry-Run" : "ausgeführt"}: eligible=${summary.eligible}, converted=${summary.converted}, skipped=${summary.skipped}, errors=${summary.errors}`;
     return reply.redirect(`/admin/media?notice=${encodeURIComponent(notice)}`);
   });
 

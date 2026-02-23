@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config.js";
 import { ensureDir, removeFile, safeResolve } from "./fileStore.js";
+import { deriveUploadPaths, isLikelyGeneratedDerivative } from "./uploadDerivatives.js";
 import { getPage, listPages } from "./wikiStore.js";
 
 const SAFE_UPLOAD_SEGMENT_PATTERN = /^[a-z0-9][a-z0-9._-]{0,120}$/i;
@@ -85,6 +86,41 @@ export const extractUploadReferencesFromMarkdown = (markdown: string): string[] 
 
 const sortRefs = (refs: UploadPageReference[]): UploadPageReference[] =>
   refs.sort((a, b) => a.title.localeCompare(b.title, "de", { sensitivity: "base" }));
+
+const buildBaseReferenceMap = (usageMap: Map<string, Map<string, UploadPageReference>>): Map<string, Map<string, UploadPageReference>> => {
+  const baseMap = new Map<string, Map<string, UploadPageReference>>();
+
+  for (const [fileName, refsByPage] of usageMap.entries()) {
+    if (isLikelyGeneratedDerivative(fileName)) continue;
+    const basePath = deriveUploadPaths(fileName).basePath;
+    const bucket = baseMap.get(basePath) ?? new Map<string, UploadPageReference>();
+    for (const [slug, ref] of refsByPage.entries()) {
+      bucket.set(slug, ref);
+    }
+    baseMap.set(basePath, bucket);
+  }
+
+  return baseMap;
+};
+
+export const resolveDerivativeAwareReferences = (
+  fileName: string,
+  usageMap: Map<string, Map<string, UploadPageReference>>,
+  baseReferenceMap: Map<string, Map<string, UploadPageReference>>
+): UploadPageReference[] => {
+  const exact = usageMap.get(fileName);
+  if (exact && exact.size > 0) {
+    return sortRefs([...exact.values()]);
+  }
+
+  if (!isLikelyGeneratedDerivative(fileName)) {
+    return [];
+  }
+
+  const basePath = deriveUploadPaths(fileName).basePath;
+  const inherited = baseReferenceMap.get(basePath);
+  return sortRefs([...(inherited?.values() ?? [])]);
+};
 
 const listUploadFilesRecursive = async (
   rootDir: string,
@@ -174,13 +210,14 @@ const listUploadFilesWithStats = async (): Promise<Array<{ fileName: string; siz
 export const getUploadUsageReport = async (): Promise<UploadUsageReport> => {
   const [usageMap, uploadFiles] = await Promise.all([buildUsageMap(), listUploadFilesWithStats()]);
   const knownUploads = new Set(uploadFiles.map((file) => file.fileName));
+  const baseReferenceMap = buildBaseReferenceMap(usageMap);
 
   const files: UploadUsageEntry[] = uploadFiles.map((file) => ({
     fileName: file.fileName,
     url: `/uploads/${file.fileName}`,
     sizeBytes: file.sizeBytes,
     modifiedAt: file.modifiedAt,
-    referencedBy: sortRefs([...(usageMap.get(file.fileName)?.values() ?? [])])
+    referencedBy: resolveDerivativeAwareReferences(file.fileName, usageMap, baseReferenceMap)
   }));
 
   const missingReferences: MissingUploadReference[] = [...usageMap.entries()]
@@ -216,6 +253,15 @@ export const deleteUploadFile = async (fileName: string): Promise<boolean> => {
   }
 
   await removeFile(filePath);
+
+  if (!isLikelyGeneratedDerivative(normalized)) {
+    const basePath = deriveUploadPaths(normalized).basePath;
+    const siblings = [`${basePath}.avif`, `${basePath}.webp`];
+    for (const sibling of siblings) {
+      await removeFile(safeResolve(config.uploadDir, sibling));
+    }
+  }
+
   return true;
 };
 

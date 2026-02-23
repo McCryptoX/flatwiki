@@ -1,16 +1,19 @@
 FROM node:20-alpine AS build
 WORKDIR /app
+RUN apk add --no-cache libavif-apps libwebp-tools
 
 COPY package.json package-lock.json tsconfig.json ./
 RUN npm ci
 
 COPY src ./src
 COPY public ./public
+COPY scripts ./scripts
 COPY data/wiki ./data/wiki
 RUN npm run build
 
 FROM node:20-alpine AS runtime
 WORKDIR /app
+RUN apk add --no-cache libavif-apps libwebp-tools
 
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force

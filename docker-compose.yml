@@ -8,3 +8,14 @@ services:
       - "3000:3000"
     volumes:
       - ./data:/app/data
+
+  backfill:
+    profiles: ["tools"]
+    build:
+      context: .
+      target: build
+    env_file:
+      - ./config.env
+    volumes:
+      - ./data:/app/data
+    entrypoint: ["npm", "run", "backfill:uploads", "--"]
