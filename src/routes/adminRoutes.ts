@@ -2290,9 +2290,9 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
           WEBP (${toolingStatus.cwebp.available ? "OK" : "Fehlt"}: <code>${escapeHtml(toolingStatus.cwebp.command)}</code>)
         </p>
         <form method="get" action="/admin/media" class="action-row">
-          <label>
+          <label class="checkline">
             <input type="checkbox" name="missingOnly" value="1" ${onlyMissingDerivatives ? "checked" : ""} />
-            Nur Bilder mit fehlenden AVIF/WEBP-Derivaten anzeigen
+            <span>Nur Bilder mit fehlenden AVIF/WEBP-Derivaten anzeigen</span>
           </label>
           <button type="submit" class="secondary tiny">Filter anwenden</button>
         </form>
@@ -2307,9 +2307,9 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
           <label>Nur seit Datum (optional)
             <input type="date" name="since" />
           </label>
-          <label>
+          <label class="checkline">
             <input type="checkbox" name="dryRun" value="1" />
-            Testlauf (ohne Änderungen)
+            <span>Testlauf (ohne Änderungen)</span>
           </label>
           <button type="submit" ${toolingStatus.avifenc.available && toolingStatus.cwebp.available ? "" : "disabled"}>Konvertierung starten</button>
         </form>
