@@ -750,8 +750,9 @@ const parseMarkdownPageFromPath = async (slug: string, filePath: string, fallbac
   const encryptedByPayload =
     typeof data.encIv === "string" && typeof data.encTag === "string" && typeof data.encData === "string";
   const encryptedRaw = encryptedByMode || encryptedByMeta || encryptedByPayload;
+  const hasSensitiveMeta = typeof data.sensitive === "boolean";
   const sensitiveByMeta = normalizeSensitive(data.sensitive);
-  const legacySensitive = sensitiveByMeta || (requestedVisibility === "restricted" && encryptedRaw);
+  const legacySensitive = hasSensitiveMeta ? sensitiveByMeta : requestedVisibility === "restricted" && encryptedRaw;
   const securityProfile = normalizeSecurityProfile(data.securityProfile, legacySensitive ? "sensitive" : "standard");
   const tags = securityProfile === "confidential" ? [] : storedTags;
   const sensitive = securityProfile === "standard" ? legacySensitive : true;

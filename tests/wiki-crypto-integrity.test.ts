@@ -111,4 +111,63 @@ describe("wiki crypto and integrity", () => {
       expect(page?.integrityState).toBe("valid");
     }
   );
+
+  it.skipIf(!config.contentEncryptionKey || !config.contentIntegrityKey)(
+    "keeps integrity valid for restricted access when standard profile keeps sensitive=false",
+    async () => {
+      const slug = `vitest-toggle-restricted-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+      const marker = `toggle-restricted-marker-${Date.now()}`;
+      createdSlugs.add(slug);
+
+      const firstSave = await savePage({
+        slug,
+        title: "Toggle Restricted Integrity Test",
+        tags: ["security", "toggle"],
+        content: marker,
+        updatedBy: "vitest",
+        securityProfile: "confidential",
+        allowedUsers: ["admin"]
+      });
+      expect(firstSave.ok).toBe(true);
+
+      const secondSave = await savePage({
+        slug,
+        title: "Toggle Restricted Integrity Test",
+        tags: ["security", "toggle"],
+        content: marker,
+        updatedBy: "vitest",
+        securityProfile: "standard",
+        sensitive: false,
+        encrypted: false,
+        visibility: "restricted",
+        allowedUsers: ["admin"],
+        allowedGroups: []
+      });
+      expect(secondSave.ok).toBe(true);
+
+      const thirdSave = await savePage({
+        slug,
+        title: "Toggle Restricted Integrity Test",
+        tags: ["security", "toggle"],
+        content: marker,
+        updatedBy: "vitest",
+        securityProfile: "standard",
+        sensitive: false,
+        encrypted: true,
+        visibility: "restricted",
+        allowedUsers: ["admin"],
+        allowedGroups: []
+      });
+      expect(thirdSave.ok).toBe(true);
+
+      const page = await getPage(slug);
+      expect(page).not.toBeNull();
+      expect(page?.securityProfile).toBe("standard");
+      expect(page?.visibility).toBe("restricted");
+      expect(page?.sensitive).toBe(false);
+      expect(page?.encrypted).toBe(true);
+      expect(page?.content).toBe(marker);
+      expect(page?.integrityState).toBe("valid");
+    }
+  );
 });
