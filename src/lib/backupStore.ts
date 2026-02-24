@@ -515,6 +515,40 @@ const ensureDataScaffold = async (): Promise<void> => {
   await ensureFile(config.runtimeSettingsFile, "{}\n");
 };
 
+const validateRestoredUsers = async (restoredDataDir: string): Promise<void> => {
+  const usersPath = path.join(restoredDataDir, "users.json");
+  let raw = "";
+  try {
+    raw = await fs.readFile(usersPath, "utf8");
+  } catch {
+    throw new Error("Restore-Archiv enthält keine users.json. Restore wurde aus Sicherheitsgründen abgebrochen.");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("users.json im Restore-Archiv ist ungültig. Restore wurde aus Sicherheitsgründen abgebrochen.");
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw new Error("users.json im Restore-Archiv hat ein ungültiges Format. Restore wurde aus Sicherheitsgründen abgebrochen.");
+  }
+
+  const activeAdmins = parsed.filter((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    const role = String((entry as Record<string, unknown>).role ?? "").trim().toLowerCase();
+    const disabled = (entry as Record<string, unknown>).disabled === true;
+    return role === "admin" && !disabled;
+  });
+
+  if (activeAdmins.length < 1) {
+    throw new Error(
+      "Restore-Archiv enthält keinen aktiven Admin-Benutzer. Restore wurde aus Sicherheitsgründen abgebrochen."
+    );
+  }
+};
+
 const replaceDataFromExtracted = async (extractedDataDir: string): Promise<void> => {
   await ensureDir(config.dataDir);
 
@@ -542,10 +576,23 @@ const replaceDataFromExtracted = async (extractedDataDir: string): Promise<void>
       continue;
     }
 
-    await fs.cp(path.join(extractedDataDir, entry.name), path.join(config.dataDir, entry.name), {
-      recursive: true,
-      force: true
-    });
+    const sourcePath = path.join(extractedDataDir, entry.name);
+    const targetPath = path.join(config.dataDir, entry.name);
+
+    try {
+      // Prefer atomic-ish move within same filesystem to avoid fs.cp/rmdir ENOTEMPTY edge-cases.
+      await fs.rename(sourcePath, targetPath);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException | undefined)?.code;
+      if (code !== "EXDEV") {
+        throw error;
+      }
+
+      await fs.cp(sourcePath, targetPath, {
+        recursive: true,
+        force: true
+      });
+    }
   }
 
   await ensureDataScaffold();
@@ -943,6 +990,7 @@ const runRestore = async (ticket: PreparedRestoreTicket, restorePassphrase: stri
       percent: 74
     });
 
+    await validateRestoredUsers(restoredDataDir);
     await replaceDataFromExtracted(restoredDataDir);
 
     updateRestoreStatus({

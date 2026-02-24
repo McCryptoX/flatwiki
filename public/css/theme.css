@@ -3,36 +3,45 @@
 @layer theme {
   :root {
     --font-sans: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    --font-mono: "JetBrains Mono", "SF Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
-    --bg: #111118;
-    --surface: rgba(26, 26, 39, 0.92);
-    --text: #e4e5eb;
-    --border: #2d2d3d;
-    --bg-alt: #1a1a27;
-    --ink: #e4e5eb;
-    --muted: #b2b9c7;
-    --muted-strong: #c3cada;
-    --line: #2d2d3d;
-    --card: rgba(26, 26, 39, 0.92);
-    --accent: #818cf8;
-    --accent-hover: #a5b4fc;
-    --link: #c5ccff;
-    --accent-soft: rgba(99, 102, 241, 0.15);
+    --font-mono: "Fira Code", "JetBrains Mono", "SF Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
+    --bg: #0b0b14;
+    --surface: rgba(19, 19, 32, 0.94);
+    --text: #f8f9ff;
+    --border: #232336;
+    --bg-alt: #10101c;
+    --surface-1: #131320;
+    --surface-2: #1a1a2c;
+    --surface-3: #232336;
+    --ink: #f8f9ff;
+    --muted: #9ea5c0;
+    --text-muted: #a9b0c8;
+    --muted-strong: #c4c9df;
+    --line: #232336;
+    --border-subtle: #2b2b42;
+    --card: rgba(19, 19, 32, 0.94);
+    --accent: #6366f1;
+    --accent-hover: #818cf8;
+    --link: #a5b4fc;
+    --accent-soft: rgba(99, 102, 241, 0.16);
     --accent-muted: #6366f1;
     --danger: #f87171;
     --danger-soft: rgba(239, 68, 68, 0.15);
     --success: #34d399;
     --success-soft: rgba(52, 211, 153, 0.15);
-    --radius: 12px;
+    --radius: 14px;
     --radius-sm: 8px;
-    --radius-lg: 16px;
-    --shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 8px 24px rgba(0, 0, 0, 0.15);
-    --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.3), 0 20px 48px rgba(0, 0, 0, 0.2);
-    --glass-bg: rgba(17, 17, 24, 0.85);
+    --radius-lg: 24px;
+    --shadow: 0 2px 12px rgba(0, 0, 0, 0.32), 0 24px 64px rgba(0, 0, 0, 0.34);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.42), 0 28px 80px rgba(0, 0, 0, 0.4);
+    --glass-bg: rgba(11, 11, 20, 0.8);
     --glass-border: rgba(255, 255, 255, 0.06);
-    --code-bg: #0d0d14;
+    --code-bg: #0f1020;
     --code-fg: #cdd6f4;
-    --focus-ring: rgba(129, 140, 248, 0.32);
+    --focus-ring: rgba(99, 102, 241, 0.46);
+    --focus: #818cf8;
+    --lh-tight: 1.2;
+    --lh-normal: 1.4;
+    --lh-loose: 1.65;
     --space-1: 0.25rem;
     --space-2: 0.5rem;
     --space-3: 0.75rem;
@@ -53,10 +62,15 @@
     --text: #1a1d26;
     --border: #e2e5eb;
     --bg-alt: #eef1f8;
+    --surface-1: #ffffff;
+    --surface-2: #f7f8fc;
+    --surface-3: #eef1f8;
     --ink: #1a1d26;
     --muted: #5f6776;
+    --text-muted: #5f6776;
     --muted-strong: #4e5665;
     --line: #e2e5eb;
+    --border-subtle: #d6dbe6;
     --card: rgba(255, 255, 255, 0.92);
     --accent: #4f46e5;
     --accent-hover: #4338ca;
@@ -74,6 +88,10 @@
     --code-bg: #1e1e2e;
     --code-fg: #cdd6f4;
     --focus-ring: rgba(79, 70, 229, 0.22);
+    --focus: #4f46e5;
+    --lh-tight: 1.2;
+    --lh-normal: 1.5;
+    --lh-loose: 1.65;
     color-scheme: light;
   }
 
@@ -84,10 +102,15 @@
       --text: #1a1d26;
       --border: #e2e5eb;
       --bg-alt: #eef1f8;
+      --surface-1: #ffffff;
+      --surface-2: #f7f8fc;
+      --surface-3: #eef1f8;
       --ink: #1a1d26;
       --muted: #5f6776;
+      --text-muted: #5f6776;
       --muted-strong: #4e5665;
       --line: #e2e5eb;
+      --border-subtle: #d6dbe6;
       --card: rgba(255, 255, 255, 0.92);
       --accent: #4f46e5;
       --accent-hover: #4338ca;
@@ -105,6 +128,10 @@
       --code-bg: #1e1e2e;
       --code-fg: #cdd6f4;
       --focus-ring: rgba(79, 70, 229, 0.22);
+      --focus: #4f46e5;
+      --lh-tight: 1.2;
+      --lh-normal: 1.5;
+      --lh-loose: 1.65;
       color-scheme: light;
     }
   }
@@ -137,6 +164,10 @@
     font-family: var(--font-sans);
     color: var(--text);
     background: var(--bg);
+    background-image:
+      radial-gradient(52rem 40rem at 100% -10%, rgba(99, 102, 241, 0.12), transparent 70%),
+      radial-gradient(46rem 38rem at -10% 0%, rgba(79, 70, 229, 0.1), transparent 72%),
+      linear-gradient(180deg, #0b0b14 0%, #090912 100%);
   }
 
   code,
@@ -152,10 +183,11 @@
     margin: 0 0 var(--space-2);
     font-weight: 700;
     letter-spacing: -0.01em;
+    line-height: var(--lh-tight);
   }
 
   p {
-    line-height: 1.68;
+    line-height: var(--lh-loose);
   }
 
   a {
@@ -164,7 +196,7 @@
 
   input::placeholder,
   textarea::placeholder {
-    color: var(--muted-strong);
+    color: color-mix(in srgb, var(--muted-strong) 88%, white 12%);
     opacity: 1;
   }
 
@@ -185,8 +217,8 @@
   }
 
   :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
+    outline: 2px solid var(--focus, var(--accent));
+    outline-offset: 3px;
     box-shadow: 0 0 0 3px var(--focus-ring);
   }
 

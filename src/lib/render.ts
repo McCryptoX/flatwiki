@@ -51,6 +51,9 @@ interface LayoutOptions {
   searchQuery?: string | undefined;
   scripts?: string[] | undefined;
   hideHeaderSearch?: boolean | undefined;
+  hideHeader?: boolean | undefined;
+  hideFooter?: boolean | undefined;
+  mainClassName?: string | undefined;
 }
 
 export const renderLayout = (options: LayoutOptions): string => {
@@ -64,6 +67,14 @@ export const renderLayout = (options: LayoutOptions): string => {
   const canonicalHref = `${(config.publicBaseUrl || "").replace(/\/+$/, "")}${canonicalPath}`;
   const user = options.user;
   const publicReadEnabled = getPublicReadEnabled();
+  const userInitials = user
+    ? user.displayName
+        .split(/\s+/)
+        .filter((part) => part.length > 0)
+        .slice(0, 2)
+        .map((part) => part[0]?.toUpperCase() ?? "")
+        .join("") || "FW"
+    : "FW";
 
   const themeToggle = `<button type="button" class="theme-toggle ghost tiny" aria-label="Farbschema wechseln" title="Farbschema wechseln" data-theme-toggle><span class="theme-toggle-icon" aria-hidden="true"></span></button>`;
 
@@ -71,7 +82,7 @@ export const renderLayout = (options: LayoutOptions): string => {
     ? `
       <nav class="nav-right" aria-label="Hauptnavigation">
         ${themeToggle}
-        <span class="welcome">${escapeHtml(user.displayName)}</span>
+        <span class="user-pill"><span class="user-avatar">${escapeHtml(userInitials)}</span><span class="welcome">${escapeHtml(user.displayName)}</span></span>
         <a href="/toc">Inhaltsverzeichnis</a>
         <a href="/notifications">Benachrichtigungen${
           user.unreadNotificationsCount && user.unreadNotificationsCount > 0
@@ -95,6 +106,7 @@ export const renderLayout = (options: LayoutOptions): string => {
   const mobileSidebarNav = user
     ? `
       <div class="mobile-sidebar-meta">
+        <span class="user-avatar">${escapeHtml(userInitials)}</span>
         <strong>${escapeHtml(user.displayName)}</strong>
       </div>
       <a href="/toc">Inhaltsverzeichnis</a>
@@ -141,6 +153,8 @@ export const renderLayout = (options: LayoutOptions): string => {
 
   const htmlTheme = user?.theme && user.theme !== "system" ? ` data-theme="${escapeHtml(user.theme)}"` : "";
 
+  const mainClass = ["container", options.mainClassName ?? ""].filter((entry) => entry.trim().length > 0).join(" ");
+
   return `<!doctype html>
 <html lang="de"${htmlTheme}>
   <head>
@@ -156,14 +170,20 @@ export const renderLayout = (options: LayoutOptions): string => {
     <meta property="og:description" content="${description}" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="${escapeHtml(canonicalHref)}" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <style>${_themeCss}</style>
-    <link rel="preload" href="/css/components.css?v=7" as="style" />
-    <link rel="stylesheet" href="/css/components.css?v=7" />
+    <link rel="preload" href="/css/components.css?v=15" as="style" />
+    <link rel="stylesheet" href="/css/components.css?v=15" />
     <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"${escapeHtml(siteTitle)}","url":"${escapeHtml((config.publicBaseUrl || "").replace(/\/+$/, "") || "/")}"}</script>
   </head>
   <body>
     <a href="#main-content" class="skip-to-main">Zum Hauptinhalt springen</a>
-    <header class="site-header ${showHeaderSearch ? "" : "site-header-no-search"}">
+    ${
+      options.hideHeader
+        ? ""
+        : `<header class="site-header ${showHeaderSearch ? "" : "site-header-no-search"}">
       <div>
         <a href="/" class="brand">${escapeHtml(siteTitle)}</a>
         <p class="subtitle">Sicheres Flat-File Wiki</p>
@@ -190,18 +210,23 @@ export const renderLayout = (options: LayoutOptions): string => {
       <nav class="mobile-sidebar-nav" aria-label="Mobile Navigation">
         ${mobileSidebarNav}
       </nav>
-    </aside>
+    </aside>`
+    }
 
-    <main class="container" id="main-content">
+    <main class="${escapeHtml(mainClass)}" id="main-content">
       ${flash}
       ${options.body}
     </main>
 
-    <footer class="site-footer">
+    ${
+      options.hideFooter
+        ? ""
+        : `<footer class="site-footer">
       <a href="/privacy">Datenschutz</a>
       <a href="/impressum">Impressum</a>
       <a href="https://flatwiki.de/" target="_blank" rel="noopener noreferrer" class="footer-powered">Powered by FlatWiki</a>
-    </footer>
+    </footer>`
+    }
     <script src="/utils.js?v=1" defer></script>
     <script src="/theme-toggle.js?v=3" defer></script>
     ${scripts}

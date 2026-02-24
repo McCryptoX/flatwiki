@@ -28,7 +28,7 @@ const SLUG_PATTERN = /^[a-z0-9_-]{1,80}$/i;
 const SUGGESTION_INDEX_MAX_AGE_MS = 20_000;
 const INTERNAL_LINK_GRAPH_MAX_AGE_MS = 30_000;
 const INTERNAL_LINK_PATTERN = /\[\[([^\]|]+?)(?:\|([^\]]+))?\]\]/g;
-const CONTENT_INTEGRITY_VERSION = 2;
+const CONTENT_INTEGRITY_VERSION = 3;
 const BASH_LANGUAGE_ALIASES = new Set(["bash", "sh", "shell", "zsh", "console"]);
 
 interface EncryptedPayload {
@@ -42,6 +42,7 @@ interface IntegrityPayloadInput {
   slug: string;
   title: string;
   categoryId: string;
+  securityProfile: SecurityProfile;
   sensitive: boolean;
   visibility: WikiVisibility;
   allowedUsers: string[];
@@ -53,9 +54,6 @@ interface IntegrityPayloadInput {
   updatedAt: string;
   updatedBy: string;
   markdownBody: string;
-  encIv: string;
-  encTag: string;
-  encData: string;
 }
 
 interface SuggestionIndexEntry {
@@ -614,8 +612,27 @@ const decryptContent = (payload: EncryptedPayload): string | null => {
   }
 };
 
-const buildIntegrityPayload = (input: IntegrityPayloadInput): string => {
-  const version = input.integrityVersion ?? CONTENT_INTEGRITY_VERSION;
+const normalizeIntegrityText = (value: string): string => value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+
+const normalizeIntegrityList = (entries: string[], options?: { lowerCase?: boolean }): string[] => {
+  const lowerCase = options?.lowerCase === true;
+  return entries
+    .map((entry) => {
+      const trimmed = entry.trim();
+      return lowerCase ? trimmed.toLowerCase() : trimmed;
+    })
+    .filter((entry) => entry.length > 0)
+    .sort((a, b) => a.localeCompare(b));
+};
+
+const buildLegacyIntegrityPayload = (
+  input: IntegrityPayloadInput & {
+    encIv: string;
+    encTag: string;
+    encData: string;
+  }
+): string => {
+  const version = input.integrityVersion ?? 2;
   const canonical: Record<string, unknown> = {
     version,
     slug: input.slug.trim().toLowerCase(),
@@ -639,6 +656,36 @@ const buildIntegrityPayload = (input: IntegrityPayloadInput): string => {
     canonical.sensitive = input.sensitive === true;
   }
   return JSON.stringify(canonical);
+};
+
+const buildIntegrityPayload = (input: IntegrityPayloadInput): string => {
+  const version = input.integrityVersion ?? CONTENT_INTEGRITY_VERSION;
+  if (version <= 2) {
+    return buildLegacyIntegrityPayload({
+      ...input,
+      encIv: "",
+      encTag: "",
+      encData: ""
+    });
+  }
+
+  const canonicalMeta: Record<string, unknown> = {
+    version,
+    slug: input.slug.trim().toLowerCase(),
+    title: input.title.trim(),
+    categoryId: input.categoryId.trim(),
+    securityProfile: input.securityProfile,
+    sensitive: input.sensitive === true,
+    visibility: input.visibility,
+    allowedUsers: normalizeIntegrityList(input.allowedUsers, { lowerCase: true }),
+    allowedGroups: normalizeIntegrityList(input.allowedGroups),
+    encryptionMode: input.encrypted ? "aes-256-gcm" : "none",
+    tags: normalizeIntegrityList(input.tags, { lowerCase: true }),
+    createdBy: input.createdBy.trim(),
+    updatedBy: input.updatedBy.trim()
+  };
+
+  return `${JSON.stringify(canonicalMeta)}\n\n${normalizeIntegrityText(input.markdownBody)}`;
 };
 
 const createIntegrityHmac = (payload: string): string | null => {
@@ -695,11 +742,14 @@ const parseMarkdownPageFromPath = async (slug: string, filePath: string, fallbac
   const updatedAt = String(data.updatedAt ?? data.createdAt ?? fallbackTimestamp);
   const updatedBy = String(data.updatedBy ?? "unknown");
   const rawBody = parsed.content.trim();
+  const normalizedRawBody = normalizeIntegrityText(rawBody);
+  const encryptionModeRaw = typeof data.encryptionMode === "string" ? data.encryptionMode.trim().toLowerCase() : "";
 
   const encryptedByMeta = data.encrypted === true;
+  const encryptedByMode = encryptionModeRaw === "aes-256-gcm";
   const encryptedByPayload =
     typeof data.encIv === "string" && typeof data.encTag === "string" && typeof data.encData === "string";
-  const encryptedRaw = encryptedByMeta || encryptedByPayload;
+  const encryptedRaw = encryptedByMode || encryptedByMeta || encryptedByPayload;
   const sensitiveByMeta = normalizeSensitive(data.sensitive);
   const legacySensitive = sensitiveByMeta || (requestedVisibility === "restricted" && encryptedRaw);
   const securityProfile = normalizeSecurityProfile(data.securityProfile, legacySensitive ? "sensitive" : "standard");
@@ -719,38 +769,8 @@ const parseMarkdownPageFromPath = async (slug: string, filePath: string, fallbac
   const hasIntegrityInfo = integrityVersion !== null || integrityHmac.length > 0;
   let integrityState: WikiPage["integrityState"] = "legacy";
 
-  if (hasIntegrityInfo) {
-    if ((integrityVersion !== 1 && integrityVersion !== CONTENT_INTEGRITY_VERSION) || integrityHmac.length < 1) {
-      integrityState = "invalid";
-    } else if (!config.contentIntegrityKey) {
-      integrityState = "unverifiable";
-    } else {
-      const payload = buildIntegrityPayload({
-        integrityVersion,
-        slug,
-        title,
-        categoryId: category.id,
-        sensitive,
-        visibility,
-        allowedUsers,
-        allowedGroups,
-        encrypted,
-        tags: storedTags,
-        createdBy,
-        createdAt,
-        updatedAt,
-        updatedBy,
-        markdownBody: rawBody,
-        encIv,
-        encTag,
-        encData
-      });
-      integrityState = verifyIntegrityHmac(payload, integrityHmac) ? "valid" : "invalid";
-    }
-  }
-
   let encryptionState: WikiPage["encryptionState"] = "none";
-  let content = rawBody;
+  let content = normalizedRawBody;
 
   if (sensitive && !encrypted) {
     return {
@@ -789,7 +809,61 @@ const parseMarkdownPageFromPath = async (slug: string, filePath: string, fallbac
       content = "";
     } else {
       encryptionState = "ok";
-      content = decrypted.trim();
+      content = normalizeIntegrityText(decrypted);
+    }
+  }
+
+  if (hasIntegrityInfo) {
+    if ((integrityVersion !== 1 && integrityVersion !== 2 && integrityVersion !== CONTENT_INTEGRITY_VERSION) || integrityHmac.length < 1) {
+      integrityState = "invalid";
+    } else if (!config.contentIntegrityKey) {
+      integrityState = "unverifiable";
+    } else if (integrityVersion === 1 || integrityVersion === 2) {
+      const payload = buildLegacyIntegrityPayload({
+        integrityVersion,
+        slug,
+        title,
+        categoryId: category.id,
+        securityProfile,
+        sensitive,
+        visibility,
+        allowedUsers,
+        allowedGroups,
+        encrypted,
+        tags: storedTags,
+        createdBy,
+        createdAt,
+        updatedAt,
+        updatedBy,
+        markdownBody: rawBody,
+        encIv,
+        encTag,
+        encData
+      });
+      integrityState = verifyIntegrityHmac(payload, integrityHmac) ? "valid" : "invalid";
+    } else if (encrypted && encryptionState !== "ok") {
+      // Without plaintext we cannot validate v3 payload; keep the page in encryption-state flow.
+      integrityState = "legacy";
+    } else {
+      const payload = buildIntegrityPayload({
+        integrityVersion,
+        slug,
+        title,
+        categoryId: category.id,
+        securityProfile,
+        sensitive,
+        visibility,
+        allowedUsers,
+        allowedGroups,
+        encrypted,
+        tags: storedTags,
+        createdBy,
+        createdAt,
+        updatedAt,
+        updatedBy,
+        markdownBody: encrypted ? content : normalizedRawBody
+      });
+      integrityState = verifyIntegrityHmac(payload, integrityHmac) ? "valid" : "invalid";
     }
   }
 
@@ -1358,6 +1432,7 @@ export const savePage = async (input: SavePageInput): Promise<{ ok: boolean; err
     .filter((tag) => tag.length > 0)
     .slice(0, 20);
   const tags = securityProfile === "confidential" ? [] : requestedTags;
+  const normalizedContent = normalizeIntegrityText(input.content);
 
   const frontmatterData: Record<string, unknown> = {
     title,
@@ -1368,6 +1443,7 @@ export const savePage = async (input: SavePageInput): Promise<{ ok: boolean; err
     allowedUsers,
     allowedGroups,
     encrypted,
+    encryptionMode: encrypted ? "aes-256-gcm" : "none",
     tags,
     createdBy,
     createdAt,
@@ -1375,7 +1451,7 @@ export const savePage = async (input: SavePageInput): Promise<{ ok: boolean; err
     updatedBy: input.updatedBy
   };
 
-  let markdownBody = input.content.trim();
+  let markdownBody = normalizedContent;
   let encIv = "";
   let encTag = "";
   let encData = "";
@@ -1399,6 +1475,7 @@ export const savePage = async (input: SavePageInput): Promise<{ ok: boolean; err
     slug,
     title,
     categoryId: category.id,
+    securityProfile,
     sensitive,
     visibility,
     allowedUsers,
@@ -1409,10 +1486,7 @@ export const savePage = async (input: SavePageInput): Promise<{ ok: boolean; err
     createdAt,
     updatedAt,
     updatedBy: input.updatedBy,
-    markdownBody,
-    encIv,
-    encTag,
-    encData
+    markdownBody: normalizedContent
   });
   const integrityHmac = createIntegrityHmac(integrityPayload);
   if (!integrityHmac) {

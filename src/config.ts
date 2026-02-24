@@ -332,6 +332,7 @@ export const config = {
   robotsFile: path.join(rootDir, "data", "robots.txt"),
   wikiDir: path.join(rootDir, "data", "wiki"),
   uploadDir: path.join(rootDir, "data", "uploads"),
+  uploadSecurityFile: path.join(rootDir, "data", "upload-security.json"),
   versionsDir: path.join(rootDir, "data", "versions"),
   backupDir: path.join(rootDir, "data", "backups"),
   categoriesFile: path.join(rootDir, "data", "categories.json"),

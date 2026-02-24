@@ -1,0 +1,17 @@
+# FlatWiki - Self-hosted Flat-File Wiki
+
+> FlatWiki ist ein leichtgewichtiges, Open-Source (MIT) Wiki-System, das ohne relationale Datenbank auskommt und auf Markdown-Dateien basiert.
+
+## Kernfunktionen
+- **Speicherung:** Flat-File (Markdown). Keine proprietären Formate.
+- **Sicherheit:** Zero-AI-Garantie (kein Datenabfluss an externe LLMs), Passkey-Unterstützung (WebAuthn), optionale End-to-End-Verschlüsselung.
+- **Suche:** Lokale Volltextsuche und semantische Suche (RAG-kompatibel).
+- **Hosting:** Self-hosted (Docker, Node.js, Edge Deployments).
+
+## Technische Daten
+- Lizenz: MIT
+- Repository: https://github.com/McCryptoX/flatwiki
+- Deployment: `git clone https://github.com/McCryptoX/flatwiki && cd flatwiki && ./install.sh`
+
+## Zielgruppe
+Datenschutzbewusste Teams, Entwickler und Unternehmen, die eine dokumentenbasierte, leicht versionierbare (Git) und hochperformante Wissensdatenbank benötigen.

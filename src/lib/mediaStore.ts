@@ -2,7 +2,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { config } from "../config.js";
 import { ensureDir, removeFile, safeResolve } from "./fileStore.js";
+import { getPageVersion, listPageVersions, listVersionSlugs } from "./pageVersionStore.js";
 import { deriveUploadPaths, isLikelyGeneratedDerivative } from "./uploadDerivatives.js";
+import { removeUploadSecurityByFile } from "./uploadSecurityStore.js";
 import { getPage, listPages } from "./wikiStore.js";
 
 const SAFE_UPLOAD_SEGMENT_PATTERN = /^[a-z0-9][a-z0-9._-]{0,120}$/i;
@@ -35,6 +37,12 @@ export interface UploadUsageReport {
 export interface CleanupUploadsResult {
   deleted: string[];
   inUse: Array<{ fileName: string; referencedBy: UploadPageReference[] }>;
+}
+
+interface UploadReferenceSource {
+  slug: string;
+  title: string;
+  markdown: string;
 }
 
 export const normalizeUploadFileName = (rawName: string): string | null => {
@@ -106,7 +114,8 @@ const buildBaseReferenceMap = (usageMap: Map<string, Map<string, UploadPageRefer
 export const resolveDerivativeAwareReferences = (
   fileName: string,
   usageMap: Map<string, Map<string, UploadPageReference>>,
-  baseReferenceMap: Map<string, Map<string, UploadPageReference>>
+  baseReferenceMap: Map<string, Map<string, UploadPageReference>>,
+  existingOriginalBasePaths?: Set<string>
 ): UploadPageReference[] => {
   const exact = usageMap.get(fileName);
   if (exact && exact.size > 0) {
@@ -118,6 +127,9 @@ export const resolveDerivativeAwareReferences = (
   }
 
   const basePath = deriveUploadPaths(fileName).basePath;
+  if (existingOriginalBasePaths && !existingOriginalBasePaths.has(basePath)) {
+    return [];
+  }
   const inherited = baseReferenceMap.get(basePath);
   return sortRefs([...(inherited?.values() ?? [])]);
 };
@@ -157,67 +169,87 @@ const listUploadFilesRecursive = async (
   return results;
 };
 
-const buildUsageMap = async (): Promise<Map<string, Map<string, UploadPageReference>>> => {
-  const pages = await listPages();
+const applyUploadReferences = (
+  usageMap: Map<string, Map<string, UploadPageReference>>,
+  source: UploadReferenceSource
+): void => {
+  const refs = extractUploadReferencesFromMarkdown(source.markdown);
+  for (const fileName of refs) {
+    const byPage = usageMap.get(fileName) ?? new Map<string, UploadPageReference>();
+    byPage.set(source.slug, {
+      slug: source.slug,
+      title: source.title
+    });
+    usageMap.set(fileName, byPage);
+  }
+};
+
+export const buildUploadUsageMapFromSources = (
+  sources: UploadReferenceSource[]
+): Map<string, Map<string, UploadPageReference>> => {
   const usageMap = new Map<string, Map<string, UploadPageReference>>();
+  for (const source of sources) {
+    applyUploadReferences(usageMap, source);
+  }
+  return usageMap;
+};
+
+const buildUsageMap = async (options?: { includeVersionHistory?: boolean }): Promise<Map<string, Map<string, UploadPageReference>>> => {
+  const pages = await listPages();
+  const sources: UploadReferenceSource[] = [];
 
   for (const pageSummary of pages) {
     const page = await getPage(pageSummary.slug);
     if (!page) continue;
+    sources.push({
+      slug: page.slug,
+      title: page.title,
+      markdown: page.content
+    });
+  }
 
-    const refs = extractUploadReferencesFromMarkdown(page.content);
-    for (const fileName of refs) {
-      const byPage = usageMap.get(fileName) ?? new Map<string, UploadPageReference>();
-      byPage.set(page.slug, {
-        slug: page.slug,
-        title: page.title
-      });
-      usageMap.set(fileName, byPage);
+  if (options?.includeVersionHistory) {
+    const knownTitles = new Map<string, string>();
+    for (const page of sources) {
+      knownTitles.set(page.slug, page.title);
+    }
+
+    const versionSlugs = await listVersionSlugs();
+    for (const slug of versionSlugs) {
+      const versions = await listPageVersions(slug, Math.max(config.versionHistoryRetention, 1));
+      if (versions.length < 1) continue;
+
+      const title = knownTitles.get(slug) ?? slug;
+      for (const version of versions) {
+        const detail = await getPageVersion(slug, version.id);
+        if (!detail) continue;
+
+        sources.push({
+          slug,
+          title,
+          markdown: detail.fileContent
+        });
+      }
     }
   }
 
-  return usageMap;
+  return buildUploadUsageMapFromSources(sources);
 };
 
-const listUploadFilesWithStats = async (): Promise<Array<{ fileName: string; sizeBytes: number; modifiedAt: string }>> => {
-  await ensureDir(config.uploadDir);
-  const allFiles = await listUploadFilesRecursive(config.uploadDir);
-
-  const entries = await Promise.all(
-    allFiles.map(async (entry) => {
-      const normalized = normalizeUploadFileName(entry.relativePath);
-      if (!normalized || normalized !== entry.relativePath) return null;
-
-      try {
-        const stats = await fs.stat(entry.absolutePath);
-        if (!stats.isFile()) return null;
-        return {
-          fileName: normalized,
-          sizeBytes: stats.size,
-          modifiedAt: stats.mtime.toISOString()
-        };
-      } catch {
-        return null;
-      }
-    })
-  );
-
-  return entries
-    .filter((entry): entry is { fileName: string; sizeBytes: number; modifiedAt: string } => entry !== null)
-    .sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime());
-};
-
-export const getUploadUsageReport = async (): Promise<UploadUsageReport> => {
-  const [usageMap, uploadFiles] = await Promise.all([buildUsageMap(), listUploadFilesWithStats()]);
+export const getUploadUsageReport = async (options?: { includeVersionHistory?: boolean }): Promise<UploadUsageReport> => {
+  const [usageMap, uploadFiles] = await Promise.all([buildUsageMap(options), listUploadFilesWithStats()]);
   const knownUploads = new Set(uploadFiles.map((file) => file.fileName));
   const baseReferenceMap = buildBaseReferenceMap(usageMap);
+  const existingOriginalBasePaths = new Set(
+    uploadFiles.filter((file) => !isLikelyGeneratedDerivative(file.fileName)).map((file) => deriveUploadPaths(file.fileName).basePath)
+  );
 
   const files: UploadUsageEntry[] = uploadFiles.map((file) => ({
     fileName: file.fileName,
     url: `/uploads/${file.fileName}`,
     sizeBytes: file.sizeBytes,
     modifiedAt: file.modifiedAt,
-    referencedBy: resolveDerivativeAwareReferences(file.fileName, usageMap, baseReferenceMap)
+    referencedBy: resolveDerivativeAwareReferences(file.fileName, usageMap, baseReferenceMap, existingOriginalBasePaths)
   }));
 
   const missingReferences: MissingUploadReference[] = [...usageMap.entries()]
@@ -253,12 +285,14 @@ export const deleteUploadFile = async (fileName: string): Promise<boolean> => {
   }
 
   await removeFile(filePath);
+  await removeUploadSecurityByFile(normalized);
 
   if (!isLikelyGeneratedDerivative(normalized)) {
     const basePath = deriveUploadPaths(normalized).basePath;
     const siblings = [`${basePath}.avif`, `${basePath}.webp`];
     for (const sibling of siblings) {
       await removeFile(safeResolve(config.uploadDir, sibling));
+      await removeUploadSecurityByFile(sibling);
     }
   }
 
@@ -266,7 +300,7 @@ export const deleteUploadFile = async (fileName: string): Promise<boolean> => {
 };
 
 export const cleanupUnusedUploads = async (options?: { candidateFileNames?: string[] }): Promise<CleanupUploadsResult> => {
-  const report = await getUploadUsageReport();
+  const report = await getUploadUsageReport({ includeVersionHistory: true });
   const candidateSet = options?.candidateFileNames
     ? new Set(
         options.candidateFileNames
@@ -297,4 +331,31 @@ export const cleanupUnusedUploads = async (options?: { candidateFileNames?: stri
     deleted,
     inUse
   };
+};
+const listUploadFilesWithStats = async (): Promise<Array<{ fileName: string; sizeBytes: number; modifiedAt: string }>> => {
+  await ensureDir(config.uploadDir);
+  const allFiles = await listUploadFilesRecursive(config.uploadDir);
+
+  const entries = await Promise.all(
+    allFiles.map(async (entry) => {
+      const normalized = normalizeUploadFileName(entry.relativePath);
+      if (!normalized || normalized !== entry.relativePath) return null;
+
+      try {
+        const stats = await fs.stat(entry.absolutePath);
+        if (!stats.isFile()) return null;
+        return {
+          fileName: normalized,
+          sizeBytes: stats.size,
+          modifiedAt: stats.mtime.toISOString()
+        };
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return entries
+    .filter((entry): entry is { fileName: string; sizeBytes: number; modifiedAt: string } => entry !== null)
+    .sort((a, b) => new Date(b.modifiedAt).getTime() - new Date(a.modifiedAt).getTime());
 };

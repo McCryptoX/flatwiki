@@ -1,0 +1,36 @@
+flatwiki.de {
+  root * /var/www/flatwiki-site
+  encode zstd gzip
+
+  # Security headers
+  header {
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "SAMEORIGIN"
+    Referrer-Policy "strict-origin-when-cross-origin"
+    Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    -Server
+  }
+
+  # Cache strategy:
+  # - CSS/JS: no immutable unless fingerprinted
+  # - images/fonts: long immutable cache
+  @stylesAndScripts path *.css *.js
+  header @stylesAndScripts Cache-Control "public, max-age=86400, must-revalidate"
+
+  @immutableAssets path *.avif *.webp *.jpg *.jpeg *.png *.svg *.woff *.woff2
+  header @immutableAssets Cache-Control "public, max-age=31536000, immutable"
+
+  # Short cache for HTML, robots and sitemap
+  @dynamicLike path / *.html /robots.txt /sitemap.xml
+  header @dynamicLike Cache-Control "public, max-age=300, must-revalidate"
+
+  # Custom 404 page
+  handle_errors {
+    @notFound expression {err.status_code} == 404
+    rewrite @notFound /404.html
+    file_server
+  }
+
+  file_server
+}

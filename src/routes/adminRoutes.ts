@@ -1291,21 +1291,23 @@ const renderUiModeManagement = (
   uploadDerivativesEnabled: boolean,
   toolingStatus: Awaited<ReturnType<typeof getUploadDerivativeToolingStatus>>
 ): string => `
-  <section class="content-wrap stack">
-    <div class="admin-index-panel stack">
-      <h2>Betriebsmodus & Lesezugriff</h2>
-      <p class="muted-note">
-        <strong>Einfach:</strong> reduzierte Admin-Oberfläche für Alltagseinsatz.
-        <br />
-        <strong>Erweitert:</strong> alle technischen Bereiche sichtbar (Backups, Versionen, Link-Check, Suchindex, TLS/SSL).
-        <br />
-        <strong>Öffentlich lesen:</strong> Gäste dürfen Artikel lesen und suchen. Schreiben/Bearbeiten bleibt nur mit Login.
-        <br />
-        <strong>Upload-Derivate:</strong> liefert AVIF/WEBP bevorzugt aus und erzeugt bei Upload neue Derivate automatisch.
-      </p>
-      <form method="post" action="/admin/ui" class="stack">
-        <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}" />
-        <label>Modus
+  <section class="content-wrap stack admin-settings-shell">
+    <form method="post" action="/admin/ui" class="stack">
+      <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}" />
+      <div class="admin-index-panel stack">
+        <h2>Allgemeine Einstellungen</h2>
+        <label>Wiki Name
+          <input type="text" value="${escapeHtml(config.wikiTitle)}" readonly aria-readonly="true" />
+        </label>
+        <label>Beschreibung
+          <textarea rows="3" readonly aria-readonly="true">Datenschutzfreundliches Flat-File-Wiki mit rollenbasiertem Zugriff und Markdown-Workflows.</textarea>
+        </label>
+        <p class="muted-note small">Name/Beschreibung werden derzeit über Umgebungsvariablen gesteuert und hier als Referenz angezeigt.</p>
+      </div>
+
+      <div class="admin-index-panel stack">
+        <h2>Sicherheit & Zugang</h2>
+        <label>Bedienmodus
           <select name="mode">
             <option value="simple" ${currentUiMode === "simple" ? "selected" : ""}>Einfach</option>
             <option value="advanced" ${currentUiMode === "advanced" ? "selected" : ""}>Erweitert</option>
@@ -1313,7 +1315,7 @@ const renderUiModeManagement = (
         </label>
         <label>Öffentlicher Lesezugriff
           <select name="publicRead">
-            <option value="0" ${!publicReadEnabled ? "selected" : ""}>Aus (Login für alles)</option>
+            <option value="0" ${!publicReadEnabled ? "selected" : ""}>Aus (Wiki privat)</option>
             <option value="1" ${publicReadEnabled ? "selected" : ""}>An (Lesen ohne Login)</option>
           </select>
         </label>
@@ -1323,7 +1325,7 @@ const renderUiModeManagement = (
             <option value="1" ${uploadDerivativesEnabled ? "selected" : ""}>An</option>
           </select>
         </label>
-        <p class="muted-note">
+        <p class="muted-note small">
           Tool-Status: AVIF (${toolingStatus.avifenc.available ? "OK" : "Fehlt"}: <code>${escapeHtml(toolingStatus.avifenc.command)}</code>),
           WEBP (${toolingStatus.cwebp.available ? "OK" : "Fehlt"}: <code>${escapeHtml(toolingStatus.cwebp.command)}</code>)
           ${
@@ -1332,17 +1334,23 @@ const renderUiModeManagement = (
               : `<br />Fehlende Tools in Docker nachinstallieren via <code>docker compose up -d --build</code>.`
           }
         </p>
+      </div>
+
+      <div class="admin-index-panel stack">
         <div class="action-row">
-          <button type="submit">Einstellungen speichern</button>
+          <button type="submit">Änderungen speichern</button>
+          <a class="button secondary" href="/admin/ui">Verwerfen</a>
         </div>
-      </form>
-      <form method="post" action="/admin/ui/repair" class="stack">
-        <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}" />
+      </div>
+    </form>
+    <form method="post" action="/admin/ui/repair" class="stack">
+      <input type="hidden" name="_csrf" value="${escapeHtml(csrfToken)}" />
+      <div class="admin-index-panel">
         <div class="action-row">
           <button type="submit" class="secondary">Konfiguration prüfen & reparieren</button>
         </div>
-      </form>
-    </div>
+      </div>
+    </form>
   </section>
 `;
 

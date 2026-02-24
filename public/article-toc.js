@@ -87,7 +87,7 @@
     }
 
     if (!tocRoot.querySelector(".toc-toggle")) {
-      tocRoot.innerHTML = `<button type="button" class="toc-toggle" aria-expanded="false">Inhaltsverzeichnis</button><div class="toc-body"><h2>Inhaltsverzeichnis</h2><ul></ul></div>`;
+      tocRoot.innerHTML = `<button type="button" class="toc-toggle" aria-expanded="false">Inhaltsverzeichnis</button><div class="toc-body"><h2>Inhaltsverzeichnis</h2><ul></ul><div class="article-toc-actions"><button type="button" class="button secondary tiny" data-share-article>Artikel teilen</button></div></div>`;
     }
 
     const toggle = tocRoot.querySelector(".toc-toggle");
@@ -185,6 +185,33 @@
     const toc = buildToc();
     if (toc) {
       setupActiveState(toc.tocRoot, toc.entries);
+      const shareButton = toc.tocRoot.querySelector("[data-share-article]");
+      if (shareButton instanceof HTMLButtonElement && shareButton.dataset.bound !== "1") {
+        shareButton.dataset.bound = "1";
+        shareButton.addEventListener("click", async () => {
+          const shareUrl = window.location.href;
+          if (navigator.share) {
+            try {
+              await navigator.share({
+                title: document.title,
+                url: shareUrl
+              });
+              return;
+            } catch {
+              // fallback to clipboard
+            }
+          }
+          if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+            try {
+              await navigator.clipboard.writeText(shareUrl);
+              shareButton.textContent = "Link kopiert";
+              window.setTimeout(() => {
+                shareButton.textContent = "Artikel teilen";
+              }, 1300);
+            } catch {}
+          }
+        });
+      }
       return;
     }
     if (attempt < MAX_RETRIES) {

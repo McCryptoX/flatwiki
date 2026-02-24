@@ -21,6 +21,9 @@ import { normalizeUploadFileName } from "./lib/mediaStore.js";
 import { resolveNegotiatedUploadPath } from "./lib/uploadDerivatives.js";
 import { getUploadCacheControl } from "./lib/uploadResponsePolicy.js";
 import { ensureInitialAdmin, migrateUserSecretStorage } from "./lib/userStore.js";
+import { canUserAccessPage, getPage } from "./lib/wikiStore.js";
+import { decryptUploadFileToBuffer } from "./lib/uploadCrypto.js";
+import { getUploadSecurityByFile } from "./lib/uploadSecurityStore.js";
 import { registerAccountRoutes } from "./routes/accountRoutes.js";
 import { registerAdminRoutes } from "./routes/adminRoutes.js";
 import { registerAuthRoutes } from "./routes/authRoutes.js";
@@ -58,6 +61,7 @@ const bootstrapDataStorage = async (): Promise<void> => {
   await ensureFile(config.attachmentsFile, '{"attachments":[]}\n');
   await ensureFile(config.auditFile, "");
   await ensureFile(config.runtimeSettingsFile, "{}\n");
+  await ensureFile(config.uploadSecurityFile, '{"entries":[]}\n');
 };
 
 const registerPlugins = async (): Promise<void> => {
@@ -124,7 +128,9 @@ const registerPlugins = async (): Promise<void> => {
       return payload;
     }
 
-    reply.header("Cache-Control", getUploadCacheControl(getPublicReadEnabled()));
+    if (!reply.hasHeader("Cache-Control")) {
+      reply.header("Cache-Control", getUploadCacheControl(getPublicReadEnabled()));
+    }
     reply.header("X-Content-Type-Options", "nosniff");
     reply.header("Cross-Origin-Resource-Policy", "same-origin");
     return payload;
@@ -166,6 +172,30 @@ const registerRoutes = async (): Promise<void> => {
       const lowerResolved = resolvedPath.toLowerCase();
       const variant = lowerResolved.endsWith(".avif") ? "avif" : lowerResolved.endsWith(".webp") ? "webp" : "original";
       reply.header("X-FlatWiki-Upload-Variant", variant);
+
+      const resolvedMeta = await getUploadSecurityByFile(resolvedPath);
+      const originalMeta = resolvedPath === normalized ? resolvedMeta : await getUploadSecurityByFile(normalized);
+      const secureMeta = resolvedMeta?.encrypted ? resolvedMeta : originalMeta?.encrypted ? originalMeta : null;
+
+      if (secureMeta?.encrypted) {
+        const page = await getPage(secureMeta.slug);
+        if (!page || !canUserAccessPage(page, request.currentUser)) {
+          return reply.code(request.currentUser ? 403 : 401).type("text/plain; charset=utf-8").send("Kein Zugriff.");
+        }
+
+        const encryptedFilePath = resolvedMeta?.encrypted ? resolvedPath : normalized;
+        const decryptResult = await decryptUploadFileToBuffer(path.join(config.uploadDir, encryptedFilePath));
+        if (!decryptResult.ok) {
+          request.log.warn({ file: encryptedFilePath, error: decryptResult.error }, "Verschlüsselter Upload konnte nicht gelesen werden.");
+          return reply.code(404).type("text/plain; charset=utf-8").send("Nicht gefunden.");
+        }
+
+        reply.header("Cache-Control", "private, no-store");
+        if (decryptResult.mimeType) {
+          reply.type(decryptResult.mimeType);
+        }
+        return reply.send(decryptResult.data);
+      }
 
       try {
         return reply.sendFile(resolvedPath, config.uploadDir);

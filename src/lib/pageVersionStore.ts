@@ -353,6 +353,10 @@ const listKnownVersionSlugs = async (): Promise<string[]> => {
   return [...new Set(slugs)].sort((a, b) => a.localeCompare(b));
 };
 
+export const listVersionSlugs = async (): Promise<string[]> => {
+  return listKnownVersionSlugs();
+};
+
 export const cleanupAllPageVersions = async (
   options?: Partial<CleanupOptions> & { slug?: string }
 ): Promise<VersionCleanupResult> => {

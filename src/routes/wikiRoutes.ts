@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { requireAdmin, requireAuth, requireAuthOrPublicRead, requireFormCsrfToken, verifySessionCsrfToken } from "../lib/auth.js";
 import {
@@ -27,6 +28,8 @@ import { escapeHtml, formatDate, renderLayout, renderPageList } from "../lib/ren
 import { getCommentModerationSettings, getUiMode, getUploadDerivativesEnabled, type UiMode } from "../lib/runtimeSettingsStore.js";
 import { removeSearchIndexBySlug, upsertSearchIndexBySlug } from "../lib/searchIndexStore.js";
 import { buildUnifiedDiff } from "../lib/textDiff.js";
+import { decryptUploadFileInPlace, encryptUploadFileInPlace } from "../lib/uploadCrypto.js";
+import { getUploadSecurityByFile, removeUploadSecurityByFile, upsertUploadSecurityEntry } from "../lib/uploadSecurityStore.js";
 import { findUserByUsername, listUsers } from "../lib/userStore.js";
 import { deleteWatchesForPage, isUserWatchingPage, listWatchersForPage, unwatchPage, watchPage } from "../lib/watchStore.js";
 import type { PublicUser, SecurityProfile, WikiPageSummary } from "../types.js";
@@ -35,6 +38,7 @@ import { parseSearchQuery } from "../lib/searchQuery.js";
 import { sendMentionNotification, sendPageUpdateNotification } from "../lib/mailer.js";
 import { persistValidatedImageUpload } from "../lib/uploadImageValidation.js";
 import { createCliDerivativeConverter, generateMissingDerivativesForSource } from "../lib/uploadDerivativeBackfill.js";
+import { deriveUploadPaths } from "../lib/uploadDerivatives.js";
 import {
   canUserAccessPage,
   deletePage,
@@ -81,6 +85,110 @@ const readMany = (value: unknown): string[] => {
   }
 
   return [];
+};
+
+const UPLOAD_EXTENSION_TO_MIME: Record<string, string> = {
+  avif: "image/avif",
+  gif: "image/gif",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp"
+};
+
+const resolveMimeTypeByUploadName = (fileName: string): string => {
+  const extension = path.extname(fileName).replace(/^\./, "").trim().toLowerCase();
+  return UPLOAD_EXTENSION_TO_MIME[extension] ?? "application/octet-stream";
+};
+
+const listExistingDerivativeFamily = async (relativePath: string): Promise<string[]> => {
+  const derived = deriveUploadPaths(relativePath);
+  const candidates = Array.from(new Set([relativePath, derived.avifPath, derived.webpPath]));
+  const existing: string[] = [];
+
+  for (const candidate of candidates) {
+    const absolutePath = safeResolve(config.uploadDir, candidate);
+    try {
+      const stats = await fs.stat(absolutePath);
+      if (stats.isFile()) {
+        existing.push(candidate);
+      }
+    } catch {
+      // ignore missing candidate
+    }
+  }
+
+  return existing;
+};
+
+const syncUploadCryptoForMarkdown = async (input: {
+  slug: string;
+  markdown: string;
+  target: "encrypt" | "decrypt";
+}): Promise<{ ok: true; changed: number } | { ok: false; error: string; changed: number }> => {
+  const refs = Array.from(new Set(extractUploadReferencesFromMarkdown(input.markdown)));
+  let changed = 0;
+
+  for (const fileName of refs) {
+    const family = await listExistingDerivativeFamily(fileName);
+    if (family.length < 1) continue;
+
+    for (const targetName of family) {
+      const filePath = safeResolve(config.uploadDir, targetName);
+      const secureMeta = await getUploadSecurityByFile(targetName);
+
+      if (input.target === "encrypt") {
+        if (secureMeta?.encrypted && secureMeta.slug === input.slug) {
+          continue;
+        }
+        if (secureMeta?.encrypted && secureMeta.slug !== input.slug) {
+          const existingLinkedPage = await getPage(secureMeta.slug);
+          if (existingLinkedPage) {
+            return {
+              ok: false,
+              changed,
+              error: `Bild ${targetName} ist bereits mit anderem Artikel verknüpft.`
+            };
+          }
+        }
+
+        const encryptResult = await encryptUploadFileInPlace(filePath, resolveMimeTypeByUploadName(targetName));
+        if (!encryptResult.ok) {
+          if (encryptResult.error.includes("nicht gefunden")) continue;
+          return { ok: false, changed, error: `${targetName}: ${encryptResult.error}` };
+        }
+        if (!encryptResult.alreadyEncrypted) {
+          changed += 1;
+        }
+        await upsertUploadSecurityEntry({
+          fileName: targetName,
+          slug: input.slug,
+          encrypted: true,
+          mimeType: resolveMimeTypeByUploadName(targetName)
+        });
+        continue;
+      }
+
+      if (!secureMeta?.encrypted || secureMeta.slug !== input.slug) {
+        continue;
+      }
+
+      const decryptResult = await decryptUploadFileInPlace(filePath);
+      if (!decryptResult.ok) {
+        if (decryptResult.error.includes("nicht gefunden")) {
+          await removeUploadSecurityByFile(targetName);
+          continue;
+        }
+        return { ok: false, changed, error: `${targetName}: ${decryptResult.error}` };
+      }
+      if (decryptResult.wasEncrypted) {
+        changed += 1;
+      }
+      await removeUploadSecurityByFile(targetName);
+    }
+  }
+
+  return { ok: true, changed };
 };
 
 const serializeJsonForHtmlScript = (value: unknown): string =>
@@ -316,6 +424,9 @@ const renderArticleToc = (slug: string, headings: Array<{ id: string; text: stri
             )
             .join("")}
         </ul>
+        <div class="article-toc-actions">
+          <button type="button" class="button secondary tiny" data-share-article>Artikel teilen</button>
+        </div>
       </div>
     </aside>
   `;
@@ -742,292 +853,275 @@ const renderEditorForm = (params: {
   showSensitiveProfileOption: boolean;
   lastKnownUpdatedAt?: string | undefined;
   lastKnownConflictToken?: string | undefined;
-}): string => `
-  <section class="content-wrap editor-shell" data-preview-endpoint="/api/markdown/preview" data-csrf="${escapeHtml(
-    params.csrfToken
-  )}" data-page-slug="${escapeHtml(params.slug)}" data-editor-mode="${params.mode}" data-security-profile="${escapeHtml(
-    params.securityProfile
-  )}" data-ui-mode="${escapeHtml(params.uiMode)}" data-initial-template-id="${escapeHtml(params.selectedTemplateId ?? "")}">
-    <h1>${params.mode === "new" ? "Neue Seite" : "Seite bearbeiten"}</h1>
-    <div class="editor-grid">
-      <form method="post" action="${escapeHtml(params.action)}" class="stack large">
-        <input type="hidden" name="_csrf" value="${escapeHtml(params.csrfToken)}" />
-        <input type="hidden" name="securityProfile" value="${escapeHtml(params.securityProfile)}" data-security-profile-input />
-        ${params.lastKnownUpdatedAt ? `<input type="hidden" name="lastKnownUpdatedAt" value="${escapeHtml(params.lastKnownUpdatedAt)}" />` : ""}
-        ${params.lastKnownConflictToken ? `<input type="hidden" name="lastKnownConflictToken" value="${escapeHtml(params.lastKnownConflictToken)}" />` : ""}
-        ${
-          params.mode === "new"
-            ? `
-              <section class="new-page-wizard stack" data-new-page-wizard data-encryption-available="${params.encryptionAvailable ? "1" : "0"}">
-                <h2>Schnell-Assistent</h2>
-                <p class="muted-note">In 3 Schritten zur neuen Seite: Inhaltstyp, Zugriff und Speichern.</p>
-                <ol class="wizard-steps">
-                  <li class="wizard-step" data-wizard-step="1">1. Inhaltstyp</li>
-                  <li class="wizard-step" data-wizard-step="2">2. Zugriff</li>
-                  <li class="wizard-step" data-wizard-step="3">3. Speichern</li>
-                </ol>
+  canDelete?: boolean;
+  deleteAction?: string | undefined;
+}): string => {
+  const securityProfileNote = params.showSensitiveProfileOption
+    ? "Standard: frei. Sensibel: eingeschränkt + verschlüsselt. Vertraulich: zusätzlich ohne Tags und ohne Live-Vorschläge."
+    : "Standard: frei. Vertraulich: eingeschränkt + verschlüsselt, ohne Tags und ohne Live-Vorschläge.";
+  const templatePresetScript = "";
+  const securityOpen = params.securityProfile !== "standard" || params.encrypted;
+  const accessOpen = !securityOpen && params.visibility === "restricted";
 
-                <div class="wizard-panel">
-                  <label class="wizard-heading">Inhaltstyp auswählen</label>
-                  <div class="wizard-template-grid">
-                    ${
-                      params.pageTemplates.length > 0
-                        ? params.pageTemplates
-                            .map(
-                              (template) =>
-                                `<button type="button" class="button secondary tiny wizard-template" data-template-id="${escapeHtml(
-                                  template.id
-                                )}" title="${escapeHtml(template.description || template.name)}">${escapeHtml(template.name)}</button>`
-                            )
-                            .join("")
-                        : '<button type="button" class="button secondary tiny wizard-template" data-template-id="blank">Leer starten</button>'
-                    }
-                  </div>
-                </div>
+  const editorFormId = params.mode === "new" ? "page-create-form" : "page-edit-form";
+  const cancelHref = params.mode === "edit" ? `/wiki/${encodeURIComponent(params.slug)}` : "/wiki";
 
-                <div class="wizard-panel">
-                  <label class="wizard-heading">Sicherheitsprofil</label>
-                  <div class="wizard-sensitivity-row" data-security-profile-picker>
-                    <button type="button" class="button secondary tiny wizard-sensitivity" data-security-profile="standard">Standard</button>
-                    ${
-                      params.showSensitiveProfileOption
-                        ? `<button type="button" class="button secondary tiny wizard-sensitivity" data-security-profile="sensitive" ${
-                            params.encryptionAvailable ? "" : "disabled"
-                          }>Sensibel</button>`
-                        : ""
-                    }
-                    <button type="button" class="button secondary tiny wizard-sensitivity" data-security-profile="confidential" ${
-                      params.encryptionAvailable ? "" : "disabled"
-                    }>Vertraulich</button>
-                  </div>
-                  <p class="muted-note small" data-security-profile-note>
-                    ${
-                      params.showSensitiveProfileOption
-                        ? "Standard: frei. Sensibel: eingeschränkt + verschlüsselt. Vertraulich: zusätzlich ohne Tags und ohne Live-Vorschläge."
-                        : "Standard: frei. Vertraulich: eingeschränkt + verschlüsselt, ohne Tags und ohne Live-Vorschläge."
-                    }
-                  </p>
-                </div>
+  return `
+    <section class="editor-shell editor-shell-redesign" data-preview-endpoint="/api/markdown/preview" data-csrf="${escapeHtml(
+      params.csrfToken
+    )}" data-page-slug="${escapeHtml(params.slug)}" data-editor-mode="${params.mode}" data-security-profile="${escapeHtml(
+      params.securityProfile
+    )}" data-ui-mode="${escapeHtml(params.uiMode)}" data-initial-template-id="${escapeHtml(params.selectedTemplateId ?? "")}">
+      <h1>${params.mode === "new" ? "Neue Seite" : "Seite bearbeiten"}</h1>
+      <div class="editor-chrome">
+        <header class="editor-topbar">
+          <div class="editor-topbar-left">
+            <a class="editor-back-link" href="${escapeHtml(cancelHref)}">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 19l-7-7 7-7M3 12h18"/></svg>
+              <span>Zurück</span>
+            </a>
+            <span class="editor-topbar-sep" aria-hidden="true"></span>
+            <span class="editor-topbar-context">${params.mode === "new" ? "Neue Seite" : "Dokument bearbeiten"}</span>
+          </div>
+          <div class="editor-topbar-actions">
+            <a href="${escapeHtml(cancelHref)}" class="editor-cancel-link">Abbrechen</a>
+            <button type="submit" form="${editorFormId}" class="button tiny" data-submit-button>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 7H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3m-1 4l-3 3m0 0-3-3m3 3V4"/></svg>
+              <span>Speichern</span>
+            </button>
+          </div>
+        </header>
 
-                <div class="wizard-panel">
-                  <label class="wizard-heading">Zugriff
-                    <select data-wizard-visibility>
-                      <option value="all" ${params.visibility === "all" ? "selected" : ""}>Alle angemeldeten Benutzer</option>
-                      <option value="restricted" ${params.visibility === "restricted" ? "selected" : ""}>Nur ausgewählte Benutzer</option>
-                    </select>
+        <div class="editor-layout editor-layout-redesign">
+          <div class="editor-left-column">
+            <div class="editor-toolbar" role="toolbar" aria-label="Markdown-Werkzeuge">
+              <button type="button" class="tiny secondary icon-btn" data-md-action="bold" title="Fett">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h8a4 4 0 1 0 0-8H6v8zm0 0h9a4 4 0 1 1 0 8H6v-8z"/></svg>
+              </button>
+              <button type="button" class="tiny secondary icon-btn" data-md-action="italic" title="Kursiv">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 4h6M8 20h6M13 4l-2 16"/></svg>
+              </button>
+              <span class="editor-toolbar-sep" aria-hidden="true"></span>
+              <button type="button" class="tiny secondary icon-btn" data-md-action="link" title="Link">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13.828 10.172a4 4 0 0 0-5.656 0l-4 4a4 4 0 1 0 5.656 5.656l1.102-1.101m-.758-4.899a4 4 0 0 0 5.656 0l4-4a4 4 0 0 0-5.656-5.656l-1.1 1.1"/></svg>
+              </button>
+              <button type="button" class="tiny secondary icon-btn" data-upload-open title="Bild einfügen">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16 4.586-4.586a2 2 0 0 1 2.828 0L16 16m-2-2 1.586-1.586a2 2 0 0 1 2.828 0L20 14m-6-6h.01M6 20h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2z"/></svg>
+              </button>
+              <span class="editor-toolbar-sep" aria-hidden="true"></span>
+              <button type="button" class="tiny secondary icon-btn" data-md-action="code" title="Code-Block">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
+              </button>
+              <div class="editor-toggle-group" role="tablist" aria-label="Editor-Ansicht">
+                <button type="button" class="tiny secondary is-active" data-editor-view-btn="write">Markdown</button>
+                <button type="button" class="tiny secondary" data-editor-view-btn="preview">Vorschau</button>
+              </div>
+            </div>
+
+            <form id="${editorFormId}" method="post" action="${escapeHtml(params.action)}" class="editor-main-form">
+              <input type="hidden" name="_csrf" value="${escapeHtml(params.csrfToken)}" />
+              ${params.lastKnownUpdatedAt ? `<input type="hidden" name="lastKnownUpdatedAt" value="${escapeHtml(params.lastKnownUpdatedAt)}" />` : ""}
+              ${params.lastKnownConflictToken ? `<input type="hidden" name="lastKnownConflictToken" value="${escapeHtml(params.lastKnownConflictToken)}" />` : ""}
+
+              <div class="editor-writing-surface">
+                <div class="editor-title-row">
+                  <label><span class="sr-only">Titel</span>
+                    <input
+                      type="text"
+                      name="title"
+                      value="${escapeHtml(params.title)}"
+                      required
+                      minlength="2"
+                      maxlength="120"
+                      placeholder="Artikeltitel eingeben..."
+                      data-title-input
+                    />
                   </label>
-                  <p class="muted-note small">Bei eingeschränktem Zugriff wähle unten Benutzer oder Gruppen aus.</p>
                 </div>
+                <p class="muted-note small form-note-danger" data-title-validation hidden>Titel ist erforderlich (mindestens 2 Zeichen).</p>
+                <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/avif" multiple hidden data-upload-file-input />
+                <textarea name="content" rows="18" required data-editor-textarea placeholder="Schreibe deinen Inhalt in Markdown...">${escapeHtml(params.content)}</textarea>
+                <section class="editor-preview" hidden aria-live="polite">
+                  <p class="muted-note">Live-Vorschau wird geladen...</p>
+                </section>
+              </div>
+            </form>
+          </div>
 
-                <div class="wizard-panel">
-                  <label class="wizard-heading">Speichern</label>
-                  <p class="muted-note small">Titel und Inhalt prüfen, dann unten <strong>Seite erstellen</strong> klicken.</p>
-                </div>
+          <aside class="editor-settings settings-shell" aria-label="Einstellungen">
+            <div class="editor-settings-head">
+              <h2>Artikel-Einstellungen</h2>
+              <p class="muted-note small">Metadaten und Struktur</p>
+            </div>
+
+            <div class="settings-section stack">
+              <section class="settings-card stack">
+                <label>Status
+                  <select class="sidebar-select fw-field">
+                    <option ${params.visibility === "all" ? "selected" : ""}>Veröffentlicht</option>
+                    <option ${params.visibility === "restricted" ? "selected" : ""}>Entwurf</option>
+                    <option>Versteckt</option>
+                  </select>
+                </label>
+
+                <label>Kategorie
+                  <select name="categoryId" form="${editorFormId}" required data-category-input class="sidebar-select fw-field">
+                    ${params.categories
+                      .map(
+                        (category) =>
+                          `<option value="${escapeHtml(category.id)}" ${category.id === params.selectedCategoryId ? "selected" : ""}>${escapeHtml(
+                            category.name
+                          )}</option>`
+                      )
+                      .join("")}
+                  </select>
+                </label>
+
+                <label>Tags
+                  <div class="tag-chip-editor fw-field" data-tag-editor>
+                    <div class="editor-tag-pills" data-tags-list></div>
+                    <input type="text" data-tags-chip-input class="tag-chip-input" placeholder="Tag hinzufügen..." autocomplete="off" />
+                  </div>
+                  <input type="hidden" form="${editorFormId}" name="tags" value="${escapeHtml(params.tags)}" data-tags-input />
+                  <span class="muted-note small" data-tags-note hidden>Bei Vertraulich werden Tags aus Datenschutzgründen nicht gespeichert.</span>
+                </label>
+
+                <label>URL Slug
+                  <div class="slug-input-wrap fw-field">
+                    <span>/</span>
+                    <input
+                      type="text"
+                      name="slug"
+                      form="${editorFormId}"
+                      value="${escapeHtml(params.slug)}"
+                      ${params.slugLocked ? "readonly" : ""}
+                      pattern="[a-z0-9-]{1,80}"
+                      placeholder="Wird automatisch aus dem Titel erstellt"
+                      data-slug-input
+                      data-slug-auto="${params.slugAuto === false ? "0" : "1"}"
+                    />
+                  </div>
+                </label>
               </section>
-              <script type="application/json" data-template-presets>${serializeJsonForHtmlScript(
-                params.pageTemplates.map((template) => ({
-                  id: template.id,
-                  name: template.name,
-                  description: template.description,
-                  defaultTitle: template.defaultTitle,
-                  defaultTags: template.defaultTags,
-                  defaultContent: template.defaultContent,
-                  securityProfile:
-                    template.sensitivity === "sensitive"
-                      ? params.showSensitiveProfileOption
-                        ? "sensitive"
-                        : "confidential"
-                      : "standard"
-                }))
-              )}</script>
-            `
-            : ""
-        }
-        <label>Titel
-          <input type="text" name="title" value="${escapeHtml(params.title)}" required minlength="2" maxlength="120" data-title-input />
-        </label>
-        ${
-          params.mode === "edit"
-            ? `
-              <label>Sicherheitsprofil
-                <div class="wizard-sensitivity-row" data-security-profile-picker>
-                  <button type="button" class="button secondary tiny wizard-sensitivity" data-security-profile="standard">Standard</button>
-                  ${
-                    params.showSensitiveProfileOption
-                      ? `<button type="button" class="button secondary tiny wizard-sensitivity" data-security-profile="sensitive" ${
-                          params.encryptionAvailable ? "" : "disabled"
-                        }>Sensibel</button>`
-                      : ""
-                  }
-                  <button type="button" class="button secondary tiny wizard-sensitivity" data-security-profile="confidential" ${
-                    params.encryptionAvailable ? "" : "disabled"
-                  }>Vertraulich</button>
-                </div>
-              </label>
-              <p class="muted-note small" data-security-profile-note>${
-                params.showSensitiveProfileOption
-                  ? "Standard: frei. Sensibel: eingeschränkt + verschlüsselt. Vertraulich: zusätzlich ohne Tags und ohne Live-Vorschläge."
-                  : "Standard: frei. Vertraulich: eingeschränkt + verschlüsselt, ohne Tags und ohne Live-Vorschläge."
-              }</p>
-            `
-            : ""
-        }
-        ${
-          params.encryptionAvailable
-            ? ""
-            : '<p class="muted-note small">Hinweis: Sensibel/Vertraulich ist nur mit <code>CONTENT_ENCRYPTION_KEY</code> verfügbar.</p>'
-        }
-        <label class="${params.mode === "new" ? "sr-only" : ""}">Zugriff
-          <select name="visibility" data-visibility-input>
-            <option value="all" ${params.visibility === "all" ? "selected" : ""}>Alle angemeldeten Benutzer</option>
-            <option value="restricted" ${params.visibility === "restricted" ? "selected" : ""}>Nur ausgewählte Benutzer</option>
-          </select>
-        </label>
-        <fieldset class="stack access-user-picker" data-restricted-only ${params.visibility === "restricted" ? "" : "hidden"}>
-          <legend>Freigegebene Benutzer (bei eingeschränktem Zugriff)</legend>
-          <div class="picker-toolbar">
-            <input
-              type="search"
-              class="tiny"
-              placeholder="Benutzer filtern (Name oder Username)"
-              data-picker-filter
-              autocomplete="off"
-            />
-            <span class="muted-note small" data-picker-count></span>
-          </div>
-          <div class="stack allowed-users-list" data-picker-list>
-            ${
-              params.availableUsers.length > 0
-                ? params.availableUsers
-                    .map((user) => {
-                      const checked = params.allowedUsers.includes(user.username) ? "checked" : "";
-                      const searchData = `${user.displayName} ${user.username}`;
-                      return `<label class="checkline user-checkline" data-search="${escapeHtml(searchData.toLowerCase())}"><input type="checkbox" name="allowedUsers" value="${escapeHtml(user.username)}" ${checked} /> <span>${escapeHtml(user.displayName)} (${escapeHtml(user.username)})</span></label>`;
-                    })
-                    .join("")
-                : '<p class="muted-note">Keine Benutzer verfügbar.</p>'
-            }
-          </div>
-        </fieldset>
-        <fieldset class="stack access-user-picker" data-restricted-only ${params.visibility === "restricted" ? "" : "hidden"}>
-          <legend>Freigegebene Gruppen (optional)</legend>
-          <div class="picker-toolbar">
-            <input type="search" class="tiny" placeholder="Gruppen filtern" data-picker-filter autocomplete="off" />
-            <span class="muted-note small" data-picker-count></span>
-          </div>
-          <div class="stack allowed-users-list" data-picker-list>
-            ${
-              params.availableGroups.length > 0
-                ? params.availableGroups
-                    .map((group) => {
-                      const checked = params.allowedGroups.includes(group.id) ? "checked" : "";
-                      const searchData = `${group.name} ${group.description}`;
-                      const description = group.description
-                        ? `<span class="muted-note small">${escapeHtml(group.description)}</span>`
-                        : "";
-                      return `<label class="checkline user-checkline" data-search="${escapeHtml(searchData.toLowerCase())}"><input type="checkbox" name="allowedGroups" value="${escapeHtml(group.id)}" ${checked} /> <span>${escapeHtml(group.name)} ${description}</span></label>`;
-                    })
-                    .join("")
-                : '<p class="muted-note">Keine Gruppen vorhanden.</p>'
-            }
-          </div>
-        </fieldset>
-        <details class="advanced-options" ${params.mode === "edit" ? "open" : ""}>
-          <summary>Mehr Optionen</summary>
-          <div class="stack">
-            <label>Seitenadresse (URL)
-              <input
-                type="text"
-                name="slug"
-                value="${escapeHtml(params.slug)}"
-                ${params.slugLocked ? "readonly" : ""}
-                pattern="[a-z0-9-]{1,80}"
-                placeholder="Wird automatisch aus dem Titel erstellt"
-                data-slug-input
-                data-slug-auto="${params.slugAuto === false ? "0" : "1"}"
-              />
-              <span class="muted-note small">Kannst du leer lassen. FlatWiki erzeugt die Seitenadresse automatisch.</span>
-            </label>
-            <label>Kategorie
-              <select name="categoryId" required data-category-input>
-                ${params.categories
-                  .map(
-                    (category) =>
-                      `<option value="${escapeHtml(category.id)}" ${category.id === params.selectedCategoryId ? "selected" : ""}>${escapeHtml(
-                        category.name
-                      )}</option>`
-                  )
-                  .join("")}
-              </select>
-            </label>
-            <label>Tags (kommagetrennt)
-              <input type="text" name="tags" value="${escapeHtml(params.tags)}" data-tags-input />
-              <span class="muted-note small" data-tags-note hidden>Bei Vertraulich werden Tags aus Datenschutzgründen nicht gespeichert.</span>
-            </label>
-            <label class="checkline standalone-checkline">
-              <input type="checkbox" name="encrypted" value="1" data-encrypted-toggle ${params.encrypted ? "checked" : ""} ${
-                params.encryptionAvailable ? "" : "disabled"
-              } />
-              <span>Inhalt im Dateisystem verschlüsseln (AES-256)</span>
-            </label>
-            ${
-              params.encryptionAvailable
-                ? '<p class="muted-note small">Bei Sensibel/Vertraulich wird Verschlüsselung automatisch erzwungen.</p>'
-                : '<p class="muted-note small">Verschlüsselung ist derzeit nicht aktiv. Setze CONTENT_ENCRYPTION_KEY in config.env.</p>'
-            }
-          </div>
-        </details>
-        <label>Inhalt (Markdown)</label>
-        <div class="editor-mode-row">
-          <div class="editor-toggle-group" role="tablist" aria-label="Editor-Ansicht">
-            <button type="button" class="tiny secondary is-active" data-editor-view-btn="write">Editor</button>
-            <button type="button" class="tiny secondary" data-editor-view-btn="preview">Vorschau</button>
-          </div>
-          <span class="muted-note small">Toolbar fügt Markdown direkt ein.</span>
-        </div>
-        <div class="editor-toolbar" role="toolbar" aria-label="Markdown-Werkzeuge">
-          <button type="button" class="tiny secondary" data-md-action="h2">H2</button>
-          <button type="button" class="tiny secondary" data-md-action="h3">H3</button>
-          <button type="button" class="tiny secondary" data-md-action="bold"><strong>B</strong></button>
-          <button type="button" class="tiny secondary" data-md-action="italic"><em>I</em></button>
-          <button type="button" class="tiny secondary" data-md-action="quote">Zitat</button>
-          <button type="button" class="tiny secondary" data-md-action="ul">Liste</button>
-          <button type="button" class="tiny secondary" data-md-action="ol">1.</button>
-          <button type="button" class="tiny secondary" data-md-action="code">Code</button>
-          <button type="button" class="tiny secondary" data-md-action="link">Link</button>
-          <button type="button" class="tiny secondary" data-md-action="table">Tabelle</button>
-        </div>
-        <textarea name="content" rows="18" required data-editor-textarea>${escapeHtml(params.content)}</textarea>
-        <section class="editor-preview" hidden aria-live="polite">
-          <p class="muted-note">Live-Vorschau wird geladen...</p>
-        </section>
-        <button type="submit">${params.mode === "new" ? "Seite erstellen" : "Änderungen speichern"}</button>
-      </form>
 
-      <aside class="upload-panel">
-        <h2>Bilder einfügen</h2>
-        <p class="muted-note">Du kannst 1-x Bilder hochladen. Dateien werden automatisch sicher umbenannt.</p>
-        ${
-          params.encrypted
-            ? '<p class="muted-note small">Bei verschlüsselten Artikeln ist Bild-Upload deaktiviert, damit keine Klartext-Dateien neben verschlüsseltem Inhalt entstehen.</p>'
-            : ""
-        }
-        <form method="post" enctype="multipart/form-data" class="stack image-upload-form" data-upload-endpoint="/api/uploads" data-csrf="${escapeHtml(
-          params.csrfToken
-        )}" data-upload-hard-disabled="${params.mode === "edit" && params.encrypted ? "1" : "0"}">
-          <label>Bilder auswählen
-            <input type="file" name="images" accept="image/png,image/jpeg,image/webp,image/gif,image/avif" multiple required ${
-              params.encrypted ? "disabled" : ""
-            } />
-          </label>
-          <button type="submit" class="secondary" ${params.encrypted ? "disabled" : ""}>Bilder hochladen</button>
-        </form>
-        <p class="muted-note small">Nach dem Upload werden Markdown-Zeilen automatisch in den Inhalt eingefügt.</p>
-        <textarea class="upload-markdown-output" rows="6" readonly placeholder="Upload-Ausgabe erscheint hier"></textarea>
-      </aside>
-    </div>
-  </section>
-`;
+              <section class="settings-card stack settings-accordion">
+                <article class="settings-accordion-item" data-collapsible data-collapsible-open="${accessOpen ? "1" : "0"}" data-settings-section="access">
+                  <button type="button" class="settings-accordion-toggle" data-collapse-toggle aria-expanded="${accessOpen ? "true" : "false"}">
+                    <span>Zugriff & Freigabe</span>
+                  </button>
+                  <div class="stack settings-accordion-panel" data-collapse-panel ${accessOpen ? "" : "hidden"}>
+                    <label>Zugriff
+                      <select name="visibility" form="${editorFormId}" data-visibility-input class="sidebar-select fw-field">
+                        <option value="all" ${params.visibility === "all" ? "selected" : ""}>Alle angemeldeten Benutzer</option>
+                        <option value="restricted" ${params.visibility === "restricted" ? "selected" : ""}>Eingeschränkt (ausgewählte Benutzer/Gruppen)</option>
+                      </select>
+                    </label>
+                    <fieldset class="stack access-user-picker" data-restricted-only ${params.visibility === "restricted" ? "" : "hidden"}>
+                      <legend>Freigegebene Benutzer</legend>
+                      <div class="picker-toolbar">
+                        <input type="search" class="tiny fw-field" placeholder="Benutzer filtern" data-picker-filter autocomplete="off" />
+                        <span class="muted-note small" data-picker-count></span>
+                      </div>
+                      <div class="stack allowed-users-list" data-picker-list>
+                        ${
+                          params.availableUsers.length > 0
+                            ? params.availableUsers
+                                .map((user) => {
+                                  const checked = params.allowedUsers.includes(user.username) ? "checked" : "";
+                                  const searchData = `${user.displayName} ${user.username}`;
+                                  return `<label class="checkline user-checkline fw-checkbox-row" data-search="${escapeHtml(searchData.toLowerCase())}"><input type="checkbox" name="allowedUsers" form="${editorFormId}" value="${escapeHtml(user.username)}" ${checked} /> <span>${escapeHtml(user.displayName)} (${escapeHtml(user.username)})</span></label>`;
+                                })
+                                .join("")
+                            : '<p class="muted-note">Keine Benutzer verfügbar.</p>'
+                        }
+                      </div>
+                    </fieldset>
+                    <fieldset class="stack access-user-picker" data-restricted-only ${params.visibility === "restricted" ? "" : "hidden"}>
+                      <legend>Freigegebene Gruppen</legend>
+                      <div class="picker-toolbar">
+                        <input type="search" class="tiny fw-field" placeholder="Gruppen filtern" data-picker-filter autocomplete="off" />
+                        <span class="muted-note small" data-picker-count></span>
+                      </div>
+                      <div class="stack allowed-users-list" data-picker-list>
+                        ${
+                          params.availableGroups.length > 0
+                            ? params.availableGroups
+                                .map((group) => {
+                                  const checked = params.allowedGroups.includes(group.id) ? "checked" : "";
+                                  const searchData = `${group.name} ${group.description}`;
+                                  const description = group.description
+                                    ? `<span class="muted-note small">${escapeHtml(group.description)}</span>`
+                                    : "";
+                                  return `<label class="checkline user-checkline fw-checkbox-row" data-search="${escapeHtml(searchData.toLowerCase())}"><input type="checkbox" name="allowedGroups" form="${editorFormId}" value="${escapeHtml(group.id)}" ${checked} /> <span>${escapeHtml(group.name)} ${description}</span></label>`;
+                                })
+                                .join("")
+                            : '<p class="muted-note">Keine Gruppen vorhanden.</p>'
+                        }
+                      </div>
+                    </fieldset>
+                  </div>
+                </article>
+
+                <article class="settings-accordion-item" data-collapsible data-collapsible-open="${securityOpen ? "1" : "0"}" data-settings-section="security">
+                  <button type="button" class="settings-accordion-toggle" data-collapse-toggle aria-expanded="${securityOpen ? "true" : "false"}">
+                    <span>Sicherheit</span>
+                  </button>
+                  <div class="stack settings-accordion-panel" data-collapse-panel ${securityOpen ? "" : "hidden"}>
+                    <input type="hidden" name="securityProfile" value="${escapeHtml(params.securityProfile)}" data-security-profile-input form="${editorFormId}" />
+                    <div class="security-segment" role="tablist" aria-label="Sicherheitsprofil">
+                      <button type="button" class="button secondary tiny" data-security-profile="standard">Standard</button>
+                      ${
+                        params.showSensitiveProfileOption
+                          ? `<button type="button" class="button secondary tiny" data-security-profile="sensitive" ${params.encryptionAvailable ? "" : "disabled"}>Sensibel</button>`
+                          : ""
+                      }
+                      <button type="button" class="button secondary tiny" data-security-profile="confidential" ${params.encryptionAvailable ? "" : "disabled"}>Vertraulich</button>
+                    </div>
+                    <label class="sr-only">Sicherheitsprofil intern
+                      <select data-security-profile-select class="sidebar-select fw-field">
+                        <option value="standard" ${params.securityProfile === "standard" ? "selected" : ""}>Standard</option>
+                        ${
+                          params.showSensitiveProfileOption
+                            ? `<option value="sensitive" ${params.securityProfile === "sensitive" ? "selected" : ""} ${
+                                params.encryptionAvailable ? "" : "disabled"
+                              }>Sensibel</option>`
+                            : ""
+                        }
+                        <option value="confidential" ${params.securityProfile === "confidential" ? "selected" : ""} ${
+                          params.encryptionAvailable ? "" : "disabled"
+                        }>Vertraulich</option>
+                      </select>
+                    </label>
+                    <label class="checkline standalone-checkline security-encryption-toggle fw-checkbox-row">
+                      <input type="checkbox" name="encrypted" form="${editorFormId}" value="1" data-encrypted-toggle ${params.encrypted ? "checked" : ""} ${
+                        params.encryptionAvailable ? "" : "disabled"
+                      } />
+                      <input type="hidden" name="encrypted" form="${editorFormId}" value="1" data-encrypted-forced-hidden disabled />
+                      <span>AES-256 Verschlüsselung aktivieren</span>
+                    </label>
+                    <p class="muted-note small" data-security-profile-note>${securityProfileNote}</p>
+                  </div>
+                </article>
+              </section>
+            </div>
+
+            <div class="settings-actions">
+              ${
+                params.canDelete && params.deleteAction
+                  ? `<form method="post" action="${escapeHtml(params.deleteAction)}" onsubmit="return confirm('Artikel wirklich löschen?')">
+                      <input type="hidden" name="_csrf" value="${escapeHtml(params.csrfToken)}" />
+                      <button type="submit" class="button secondary danger-look">🗑️ Artikel löschen</button>
+                    </form>`
+                  : ""
+              }
+            </div>
+            ${templatePresetScript}
+          </aside>
+        </div>
+      </div>
+    </section>
+  `;
+};
 
 const buildEditorRedirectQuery = (params: {
   error: string;
@@ -1516,54 +1610,60 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
             : "fehlerhaft";
     const visibilityLabel = page.visibility === "restricted" ? "eingeschränkt" : "alle";
     const breadcrumbs = renderSlugBreadcrumbs(page.slug);
+    const tagBadges = page.tags
+      .slice(0, 8)
+      .map((tag) => `<span class="tag-chip">#${escapeHtml(tag)}</span>`)
+      .join("");
     const body = `
       <article class="wiki-page article-page ${articleToc ? "article-layout" : ""}">
         ${articleToc}
         <div class="article-main">
-          <header class="article-header">
-            ${breadcrumbs}
-            <h1>${escapeHtml(page.title)}</h1>
-            <div class="card-meta article-meta-row">
+          ${breadcrumbs}
+          <header class="article-header article-hero-card">
+            <div class="article-hero-head">
+              <h1>${escapeHtml(page.title)}</h1>
+              <div class="actions">
+                ${
+                  request.currentUser
+                    ? `<a class="button secondary tiny" href="/wiki/${encodeURIComponent(page.slug)}/edit">Bearbeiten</a>
+                       <form method="post" action="/wiki/${encodeURIComponent(page.slug)}/watch" class="inline-watch-form" data-watch-form>
+                         <input type="hidden" name="_csrf" value="${escapeHtml(request.csrfToken ?? "")}" />
+                         <input type="hidden" name="mode" value="toggle" />
+                         <button
+                           type="submit"
+                           class="button secondary tiny watch-toggle ${isWatching ? "is-watching" : ""}"
+                           data-watch-button
+                           aria-pressed="${isWatching ? "true" : "false"}"
+                         >
+                           <span data-watch-label>${isWatching ? "Beobachtet" : "Beobachten"}</span>
+                         </button>
+                         <span class="watch-feedback muted-note small" data-watch-feedback role="status" aria-live="polite"></span>
+                       </form>`
+                    : ""
+                }
+                <a class="button secondary tiny" href="/wiki/${encodeURIComponent(page.slug)}/history">Historie</a>
+                ${
+                  request.currentUser?.role === "admin"
+                    ? `<form method="post" action="/wiki/${encodeURIComponent(page.slug)}/delete" onsubmit="return confirm('Seite wirklich löschen?')"><input type="hidden" name="_csrf" value="${escapeHtml(request.csrfToken ?? "")}" /><button class="danger tiny" type="submit">Löschen</button></form>`
+                    : ""
+                }
+              </div>
+            </div>
+            <div class="article-meta-row article-meta-compact">
+              <span class="meta-pill">Autor: ${escapeHtml(page.updatedBy)}</span>
+              <span class="meta-pill">Zuletzt: <time datetime="${escapeHtml(page.updatedAt)}">${escapeHtml(formatDate(page.updatedAt))}</time></span>
               <span class="meta-pill">Kategorie: ${escapeHtml(page.categoryName)}</span>
               <span class="meta-pill">Profil: ${escapeHtml(formatSecurityProfileLabel(page.securityProfile))}</span>
               <span class="meta-pill">Zugriff: ${escapeHtml(visibilityLabel)}</span>
               <span class="meta-pill">${page.encrypted ? "Verschlüsselt" : "Unverschlüsselt"}</span>
               <span class="meta-pill">Integrität: ${escapeHtml(integrityLabel)}</span>
             </div>
+            ${tagBadges ? `<div class="card-tags">${tagBadges}</div>` : ""}
             ${
               page.sensitive
                 ? '<p class="muted-note">Sensibler Modus aktiv. Keine PIN/TAN, vollständige Kartendaten oder Geheimnisse im Klartext speichern.</p>'
                 : ""
             }
-            <p class="meta">Zuletzt geändert: <time datetime="${escapeHtml(page.updatedAt)}">${escapeHtml(
-              formatDate(page.updatedAt)
-            )}</time> | von ${escapeHtml(page.updatedBy)}</p>
-            <div class="actions">
-              ${
-                request.currentUser
-                  ? `<a class="button secondary" href="/wiki/${encodeURIComponent(page.slug)}/edit">Bearbeiten</a>
-                     <form method="post" action="/wiki/${encodeURIComponent(page.slug)}/watch" class="inline-watch-form" data-watch-form>
-                       <input type="hidden" name="_csrf" value="${escapeHtml(request.csrfToken ?? "")}" />
-                       <input type="hidden" name="mode" value="toggle" />
-                       <button
-                         type="submit"
-                         class="button secondary watch-toggle ${isWatching ? "is-watching" : ""}"
-                         data-watch-button
-                         aria-pressed="${isWatching ? "true" : "false"}"
-                       >
-                         <span data-watch-label>${isWatching ? "Beobachtet" : "Beobachten"}</span>
-                       </button>
-                       <span class="watch-feedback muted-note small" data-watch-feedback role="status" aria-live="polite"></span>
-                     </form>`
-                  : ""
-              }
-              <a class="button secondary" href="/wiki/${encodeURIComponent(page.slug)}/history">Historie</a>
-              ${
-                request.currentUser?.role === "admin"
-                  ? `<form method="post" action="/wiki/${encodeURIComponent(page.slug)}/delete" onsubmit="return confirm('Seite wirklich löschen?')"><input type="hidden" name="_csrf" value="${escapeHtml(request.csrfToken ?? "")}" /><button class="danger" type="submit">Löschen</button></form>`
-                  : ""
-              }
-            </div>
           </header>
           <section class="wiki-content">${page.html}</section>
           <section class="wiki-backlinks">
@@ -1663,7 +1763,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     `;
 
     const scripts: string[] = [];
-    if (articleToc) scripts.push("/article-toc.js?v=5");
+    if (articleToc) scripts.push("/article-toc.js?v=6");
     if (request.currentUser) scripts.push("/comment-mention.js?v=6");
 
     return reply.type("text/html").send(
@@ -1932,6 +2032,14 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
       }
     );
     visibility = normalizedSettings.visibility;
+    if (
+      visibility === "restricted" &&
+      allowedUsers.length < 1 &&
+      allowedGroups.length < 1 &&
+      request.currentUser?.username
+    ) {
+      allowedUsers.push(request.currentUser.username.toLowerCase());
+    }
 
     const body = renderEditorForm({
       mode: "new",
@@ -1963,7 +2071,8 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
       encrypted: normalizedSettings.encrypted,
       encryptionAvailable: Boolean(config.contentEncryptionKey),
       uiMode,
-      showSensitiveProfileOption
+      showSensitiveProfileOption,
+      canDelete: false
     });
 
     return reply.type("text/html").send(
@@ -1973,8 +2082,12 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         body,
         user: request.currentUser,
         csrfToken: request.csrfToken,
+        hideHeader: true,
+        hideFooter: true,
+        hideHeaderSearch: true,
+        mainClassName: "editor-stage",
         error: readSingle(query.error),
-        scripts: ["/wiki-ui.js?v=13"]
+        scripts: ["/wiki-ui.js?v=29"]
       })
     );
   });
@@ -1985,8 +2098,8 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
 
     const title = readSingle(body.title).trim();
     const slugInput = readSingle(body.slug).trim().toLowerCase();
-    const slugWasExplicitlyProvided = slugInput.length > 0;
     const requestedAutoSlug = slugifyTitle(title).toLowerCase();
+    const slugWasExplicitlyProvided = slugInput.length > 0 && slugInput !== requestedAutoSlug;
     let slug = (slugInput || requestedAutoSlug).toLowerCase();
     const tagsRaw = readSingle(body.tags);
     const tags = tagsRaw
@@ -2033,11 +2146,8 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     const allowedGroupsInput = normalizeIds(readMany(body.allowedGroups));
     const allowedGroups = allowedGroupsInput.filter((groupId) => knownGroupIds.has(groupId));
 
-    if (visibility === "restricted" && request.currentUser?.username && request.currentUser.role !== "admin") {
-      const own = request.currentUser.username.toLowerCase();
-      if (!allowedUsers.includes(own)) {
-        allowedUsers.push(own);
-      }
+    if (visibility === "restricted" && request.currentUser?.username && allowedUsers.length < 1 && allowedGroups.length < 1) {
+      allowedUsers.push(request.currentUser.username.toLowerCase());
     }
 
     if (!isValidSlug(slug)) {
@@ -2094,6 +2204,26 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         return reply.redirect(`/new?${query}`);
       }
       slug = resolvedSlug;
+    }
+
+    if (normalizedSettings.encrypted) {
+      const syncResult = await syncUploadCryptoForMarkdown({ slug, markdown: content, target: "encrypt" });
+      if (!syncResult.ok) {
+        const query = buildEditorRedirectQuery({
+          error: `Bilder konnten nicht verschlüsselt werden: ${syncResult.error}`,
+          title,
+          slug,
+          tags: tagsRaw,
+          content,
+          categoryId: selectedCategoryId,
+          securityProfile: normalizedSettings.securityProfile,
+          visibility,
+          allowedUsers,
+          allowedGroups,
+          encrypted: normalizedSettings.encrypted
+        });
+        return reply.redirect(`/new?${query}`);
+      }
     }
 
     const result = await savePage({
@@ -2210,6 +2340,14 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
       sensitive: page.sensitive
     });
     visibility = normalizedSettings.visibility;
+    if (
+      visibility === "restricted" &&
+      allowedUsers.length < 1 &&
+      allowedGroups.length < 1 &&
+      request.currentUser?.username
+    ) {
+      allowedUsers.push(request.currentUser.username.toLowerCase());
+    }
 
     const body = renderEditorForm({
       mode: "edit",
@@ -2235,7 +2373,9 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
       uiMode,
       showSensitiveProfileOption,
       lastKnownUpdatedAt: page.updatedAt,
-      lastKnownConflictToken: buildEditConflictToken(page)
+      lastKnownConflictToken: buildEditConflictToken(page),
+      canDelete: request.currentUser?.role === "admin",
+      deleteAction: request.currentUser?.role === "admin" ? `/wiki/${encodeURIComponent(page.slug)}/delete` : undefined
     });
 
     return reply.type("text/html").send(
@@ -2245,8 +2385,12 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         body,
         user: request.currentUser,
         csrfToken: request.csrfToken,
+        hideHeader: true,
+        hideFooter: true,
+        hideHeaderSearch: true,
+        mainClassName: "editor-stage",
         error: readSingle(query.error),
-        scripts: ["/wiki-ui.js?v=13"]
+        scripts: ["/wiki-ui.js?v=29"]
       })
     );
   });
@@ -2262,26 +2406,18 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     const category = (await findCategoryById(selectedCategoryId)) ?? (await getDefaultCategory());
     const uploadSubDir = category.uploadFolder.trim() || "allgemein";
     const uploadTargetDir = safeResolve(config.uploadDir, uploadSubDir);
+    const existingPage = isValidSlug(pageSlug) ? await getPage(pageSlug) : null;
+    const shouldEncryptUpload = securityProfileContext !== "standard" || encryptedContext || existingPage?.encrypted === true;
 
     if (!verifySessionCsrfToken(request, csrfValue)) {
       return reply.code(400).send({ ok: false, error: "Ungültiges CSRF-Token." });
     }
 
-    if (securityProfileContext !== "standard" || encryptedContext) {
-      return reply.code(400).send({
-        ok: false,
-        error: "Bei sensiblen oder verschlüsselten Artikeln ist Bild-Upload deaktiviert."
-      });
+    if (shouldEncryptUpload && !config.contentEncryptionKey) {
+      return reply.code(400).send({ ok: false, error: "Verschlüsselter Upload ist nicht verfügbar (CONTENT_ENCRYPTION_KEY fehlt)." });
     }
-
-    if (isValidSlug(pageSlug)) {
-      const existingPage = await getPage(pageSlug);
-      if (existingPage?.encrypted) {
-        return reply.code(400).send({
-          ok: false,
-          error: "Dieser Artikel ist verschlüsselt. Bild-Upload ist deaktiviert."
-        });
-      }
+    if (shouldEncryptUpload && !isValidSlug(pageSlug)) {
+      return reply.code(400).send({ ok: false, error: "Für verschlüsselte Uploads muss zuerst eine gültige Seitenadresse gesetzt werden." });
     }
 
     if (!request.isMultipart()) {
@@ -2319,19 +2455,9 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
           rejected.push(`${part.filename ?? "Datei"}: ${persisted.error}`);
           continue;
         }
-
-        const url = `/uploads/${encodeURIComponent(uploadSubDir)}/${storedName}`;
-        const alt = escapeMarkdownText(sanitizeAltText(part.filename ?? "Bild"));
-
-        uploaded.push({
-          url,
-          markdown: `![${alt}](${url})`,
-          originalName: part.filename ?? storedName,
-          storedName
-        });
+        const relativePath = `${uploadSubDir}/${storedName}`;
 
         if (derivativesEnabled && derivativeConverter) {
-          const relativePath = `${uploadSubDir}/${storedName}`;
           const derivativeResult = await generateMissingDerivativesForSource({
             uploadRootDir: config.uploadDir,
             relativePath,
@@ -2349,6 +2475,54 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
             );
           }
         }
+
+        const family = await listExistingDerivativeFamily(relativePath);
+        if (shouldEncryptUpload) {
+          let failed = false;
+          let failedMessage = "";
+          for (const familyFile of family) {
+            const encryptedResult = await encryptUploadFileInPlace(
+              safeResolve(config.uploadDir, familyFile),
+              resolveMimeTypeByUploadName(familyFile)
+            );
+            if (!encryptedResult.ok) {
+              failed = true;
+              failedMessage = encryptedResult.error;
+              break;
+            }
+          }
+          if (failed) {
+            for (const familyFile of family) {
+              await removeFile(safeResolve(config.uploadDir, familyFile));
+              await removeUploadSecurityByFile(familyFile);
+            }
+            rejected.push(`${part.filename ?? "Datei"}: ${failedMessage || "Upload konnte nicht verschlüsselt gespeichert werden."}`);
+            continue;
+          }
+
+          for (const familyFile of family) {
+            await upsertUploadSecurityEntry({
+              fileName: familyFile,
+              slug: pageSlug,
+              encrypted: true,
+              mimeType: resolveMimeTypeByUploadName(familyFile)
+            });
+          }
+        } else {
+          for (const familyFile of family) {
+            await removeUploadSecurityByFile(familyFile);
+          }
+        }
+
+        const url = `/uploads/${encodeURIComponent(uploadSubDir)}/${storedName}`;
+        const alt = escapeMarkdownText(sanitizeAltText(part.filename ?? "Bild"));
+
+        uploaded.push({
+          url,
+          markdown: `![${alt}](${url})`,
+          originalName: part.filename ?? storedName,
+          storedName
+        });
       }
     } catch (error) {
       request.log.warn({ error }, "Upload fehlgeschlagen");
@@ -2470,7 +2644,9 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
         uiMode,
         showSensitiveProfileOption: uiMode === "advanced",
         lastKnownUpdatedAt: existing.updatedAt,
-        lastKnownConflictToken: currentConflictToken
+        lastKnownConflictToken: currentConflictToken,
+        canDelete: request.currentUser?.role === "admin",
+        deleteAction: request.currentUser?.role === "admin" ? `/wiki/${encodeURIComponent(normalizedSlug)}/delete` : undefined
       });
       return reply.type("text/html").send(
         renderLayout({
@@ -2479,7 +2655,7 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
           user: request.currentUser,
           csrfToken: request.csrfToken,
           error: `Konflikt: Diese Seite wurde zwischenzeitlich von „${escapeHtml(existing.updatedBy)}" am ${formatDate(existing.updatedAt)} geändert. Deine Änderungen sind unten erhalten – bitte prüfen und erneut speichern.`,
-          scripts: ["/wiki-ui.js?v=13"]
+          scripts: ["/wiki-ui.js?v=29"]
         })
       );
     }
@@ -2507,11 +2683,8 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
     const allowedGroupsInput = normalizeIds(readMany(body.allowedGroups));
     const allowedGroups = allowedGroupsInput.filter((groupId) => knownGroupIds.has(groupId));
 
-    if (visibility === "restricted" && request.currentUser?.username && request.currentUser.role !== "admin") {
-      const own = request.currentUser.username.toLowerCase();
-      if (!allowedUsers.includes(own)) {
-        allowedUsers.push(own);
-      }
+    if (visibility === "restricted" && request.currentUser?.username && allowedUsers.length < 1 && allowedGroups.length < 1) {
+      allowedUsers.push(request.currentUser.username.toLowerCase());
     }
 
     if (normalizedSettings.securityProfile !== "standard" && !config.contentEncryptionKey) {
@@ -2529,6 +2702,45 @@ export const registerWikiRoutes = async (app: FastifyInstance): Promise<void> =>
       });
 
       return reply.redirect(`/wiki/${encodeURIComponent(normalizedSlug)}/edit?${query}`);
+    }
+
+    const switchedToEncrypted = !existing.encrypted && normalizedSettings.encrypted;
+    const switchedToUnencrypted = existing.encrypted && !normalizedSettings.encrypted;
+    if (switchedToEncrypted) {
+      const syncResult = await syncUploadCryptoForMarkdown({ slug: normalizedSlug, markdown: content, target: "encrypt" });
+      if (!syncResult.ok) {
+        const query = buildEditorRedirectQuery({
+          error: `Bilder konnten nicht verschlüsselt werden: ${syncResult.error}`,
+          title,
+          tags: tagsRaw,
+          content,
+          categoryId: selectedCategoryId,
+          securityProfile: normalizedSettings.securityProfile,
+          visibility,
+          allowedUsers,
+          allowedGroups,
+          encrypted: normalizedSettings.encrypted
+        });
+        return reply.redirect(`/wiki/${encodeURIComponent(normalizedSlug)}/edit?${query}`);
+      }
+    }
+    if (switchedToUnencrypted) {
+      const syncResult = await syncUploadCryptoForMarkdown({ slug: normalizedSlug, markdown: content, target: "decrypt" });
+      if (!syncResult.ok) {
+        const query = buildEditorRedirectQuery({
+          error: `Bilder konnten nicht entschlüsselt werden: ${syncResult.error}`,
+          title,
+          tags: tagsRaw,
+          content,
+          categoryId: selectedCategoryId,
+          securityProfile: normalizedSettings.securityProfile,
+          visibility,
+          allowedUsers,
+          allowedGroups,
+          encrypted: normalizedSettings.encrypted
+        });
+        return reply.redirect(`/wiki/${encodeURIComponent(normalizedSlug)}/edit?${query}`);
+      }
     }
 
     const result = await savePage({

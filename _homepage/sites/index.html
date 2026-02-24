@@ -1,0 +1,1868 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="FlatWiki ist ein self-hosted Wiki ohne Tracking: Markdown-Dateien, schnelle Volltextsuche, keine Datenbank erforderlich." />
+    <meta name="robots" content="index,follow,max-snippet:-1,max-image-preview:large,max-video-preview:-1" />
+    <meta name="theme-color" content="#0b0d18" />
+    <link rel="canonical" href="https://flatwiki.de/" />
+    <link rel="alternate" hreflang="de-DE" href="https://flatwiki.de/" />
+    <link rel="alternate" hreflang="x-default" href="https://flatwiki.de/" />
+    <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml" />
+
+    <meta property="og:locale" content="de_DE" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="FlatWiki" />
+    <meta property="og:title" content="FlatWiki | Self-hosted Wiki mit Markdown-Dateien" />
+    <meta property="og:description" content="Self-hosted, ohne Tracking, keine Datenbank erforderlich: FlatWiki macht Wissen schnell auffindbar." />
+    <meta property="og:url" content="https://flatwiki.de/" />
+    <meta property="og:image" content="https://flatwiki.de/assets/images/ui-home-dark-1400.jpg" />
+    <meta property="og:image:width" content="1400" />
+    <meta property="og:image:height" content="879" />
+    <meta property="og:image:alt" content="FlatWiki Startseite im Dark Mode" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="FlatWiki | Self-hosted Wiki mit Markdown-Dateien" />
+    <meta name="twitter:description" content="Self-hosted, ohne Tracking, keine Datenbank erforderlich: FlatWiki macht Wissen schnell auffindbar." />
+    <meta name="twitter:image" content="https://flatwiki.de/assets/images/ui-home-dark-1400.jpg" />
+
+    <title>FlatWiki | Self-hosted Wiki mit Markdown-Dateien &amp; Volltextsuche</title>
+
+    <link
+      rel="preload"
+      as="image"
+      href="./assets/images/ui-home-dark-640.avif"
+      type="image/avif"
+      media="(max-width: 900px)"
+      imagesrcset="./assets/images/ui-home-dark-480.avif 480w, ./assets/images/ui-home-dark-560.avif 560w, ./assets/images/ui-home-dark-640.avif 640w"
+      imagesizes="96vw"
+      fetchpriority="high"
+    />
+    <link
+      rel="preload"
+      as="image"
+      href="./assets/images/ui-home-dark-640.jpg"
+      media="(max-width: 900px)"
+      imagesrcset="./assets/images/ui-home-dark-480.jpg 480w, ./assets/images/ui-home-dark-560.jpg 560w, ./assets/images/ui-home-dark-640.jpg 640w"
+      imagesizes="96vw"
+      fetchpriority="high"
+    />
+    <link
+      rel="preload"
+      as="image"
+      href="./assets/images/ui-home-dark-960.avif"
+      type="image/avif"
+      media="(min-width: 901px)"
+      imagesrcset="./assets/images/ui-home-dark-640.avif 640w, ./assets/images/ui-home-dark-760.avif 760w, ./assets/images/ui-home-dark-880.avif 880w, ./assets/images/ui-home-dark-960.avif 960w"
+      imagesizes="(max-width: 1280px) 54vw, 760px"
+      fetchpriority="high"
+    />
+    <link
+      rel="preload"
+      as="image"
+      href="./assets/images/ui-home-dark-960.jpg"
+      media="(min-width: 901px)"
+      imagesrcset="./assets/images/ui-home-dark-640.jpg 640w, ./assets/images/ui-home-dark-760.jpg 760w, ./assets/images/ui-home-dark-880.jpg 880w, ./assets/images/ui-home-dark-960.jpg 960w"
+      imagesizes="(max-width: 1280px) 54vw, 760px"
+      fetchpriority="high"
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <meta name="msapplication-config" content="/browserconfig.xml" />
+
+    <style>
+:root {
+  --font-sans: "Inter", "SF Pro Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --bg: #0b0d18;
+  --bg-soft: #121527;
+  --surface: rgba(23, 27, 45, 0.9);
+  --surface-2: rgba(28, 32, 52, 0.92);
+  --line: #2d3350;
+  --line-soft: #20263f;
+
+  --text: #e7eaf4;
+  --muted: #b8bfd3;
+  --muted-strong: #cad0e2;
+
+  --accent: #8d96ff;
+  --accent-hover: #a6adff;
+  --accent-soft: rgba(141, 150, 255, 0.16);
+  --focus: rgba(141, 150, 255, 0.38);
+
+  --ok: #68d7a9;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.28);
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+
+  --container: min(1120px, calc(100% - 2rem));
+}
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--text);
+  background:
+    radial-gradient(1200px 700px at 88% -10%, rgba(141, 150, 255, 0.18), transparent 60%),
+    radial-gradient(1000px 540px at -10% -10%, rgba(85, 101, 255, 0.16), transparent 60%),
+    var(--bg);
+  line-height: 1.65;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+a {
+  color: var(--text);
+  text-underline-offset: 0.2em;
+}
+
+p {
+  margin: 0;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+h1 {
+  font-size: clamp(2rem, 4.6vw, 3.35rem);
+}
+
+h2 {
+  font-size: clamp(1.5rem, 3.2vw, 2.3rem);
+}
+
+h3 {
+  font-size: clamp(1.1rem, 2.2vw, 1.35rem);
+}
+
+main {
+  overflow-x: clip;
+}
+
+.container {
+  width: var(--container);
+  margin-inline: auto;
+}
+
+.section {
+  padding: var(--space-7) 0;
+}
+
+.section-intro {
+  margin-top: var(--space-3);
+  color: var(--muted);
+  max-width: 72ch;
+}
+
+.card {
+  background: linear-gradient(180deg, var(--surface), var(--surface-2));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 1rem;
+  z-index: 100;
+  background: var(--accent);
+  color: #10131d;
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.9rem;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.skip-link:focus-visible {
+  left: 1rem;
+}
+
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 260ms ease, transform 260ms ease;
+}
+
+[data-reveal].is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  [data-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+@media (max-width: 740px) {
+  .section {
+    padding: var(--space-6) 0;
+  }
+}
+
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  backdrop-filter: blur(10px);
+  background: rgba(11, 13, 24, 0.8);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: 64px;
+}
+
+.brand {
+  text-decoration: none;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.brand strong {
+  font-size: 1.55rem;
+  line-height: 1;
+}
+
+.brand span {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.header-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: clamp(0.9rem, 2.2vw, 1.75rem);
+}
+
+.nav-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  min-height: 40px;
+  padding: 0.45rem 0.9rem;
+  font-weight: 700;
+}
+
+.header-nav a {
+  color: var(--muted-strong);
+  text-decoration: none;
+  font-size: 0.84rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.header-nav a:hover,
+.header-nav a:focus-visible {
+  color: var(--text);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #121523;
+  font-weight: 700;
+  font-size: 0.95rem;
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+  text-decoration: none;
+  transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.button:hover,
+.button:focus-visible {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  transform: translateY(-1px);
+}
+
+.button.ghost {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--line);
+}
+
+.button.ghost:hover,
+.button.ghost:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+:where(a, button):focus-visible {
+  outline: 2px solid var(--accent);
+  box-shadow: 0 0 0 4px var(--focus);
+}
+
+.feature,
+.usecase-grid .card,
+.gallery-grid .card,
+.cta-panel {
+  padding: var(--space-5);
+}
+
+.feature p,
+.usecase-grid p,
+.gallery-grid figcaption,
+.cta-panel p {
+  color: var(--muted);
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.social-proof {
+  color: var(--muted-strong);
+  font-size: 0.92rem;
+}
+
+.social-proof a {
+  font-weight: 700;
+}
+
+.meta-chunk {
+  margin-left: 0.5rem;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.site-footer {
+  border-top: 1px solid var(--line-soft);
+  padding: var(--space-6) 0;
+  background: rgba(8, 10, 18, 0.92);
+}
+
+.footer-grid {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.footer-grid p {
+  color: var(--muted);
+}
+
+.site-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-4);
+}
+
+.site-footer nav a {
+  color: var(--muted-strong);
+}
+
+.site-footer nav a:hover,
+.site-footer nav a:focus-visible {
+  color: var(--text);
+}
+
+.footer-meta {
+  margin-top: 0.9rem;
+  color: color-mix(in srgb, var(--muted) 70%, transparent);
+  font-size: 0.8rem;
+  letter-spacing: 0.01em;
+}
+
+@media (max-width: 980px) {
+  .header-inner {
+    flex-wrap: wrap;
+    justify-content: space-between;
+    padding: 0.8rem 0;
+  }
+
+  .nav-toggle {
+    display: inline-flex;
+  }
+
+  .header-nav {
+    display: none;
+    order: 3;
+    width: 100%;
+    justify-content: flex-start;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.8rem;
+    border-top: 1px solid var(--line-soft);
+    padding-top: 0.9rem;
+    padding-bottom: 0.6rem;
+  }
+
+  .header-nav.is-open {
+    display: flex;
+  }
+}
+
+@media (max-width: 600px) {
+  .header-nav {
+    gap: 0.8rem;
+    flex-wrap: wrap;
+  }
+}
+.hero {
+  position: relative;
+  min-height: max(760px, 100vh);
+  min-height: max(760px, 100svh);
+  min-height: max(760px, 100dvh);
+  height: auto;
+  padding-top: clamp(7rem, 10vw, 8.2rem);
+  padding-bottom: max(clamp(5rem, 8vw, 7rem), calc(32px + env(safe-area-inset-bottom)));
+  background:
+    radial-gradient(1000px 700px at 84% 10%, rgba(141, 150, 255, 0.24), transparent 68%),
+    radial-gradient(800px 540px at 10% 90%, rgba(85, 101, 255, 0.16), transparent 70%),
+    linear-gradient(180deg, rgba(15, 19, 36, 0.82) 0%, rgba(11, 13, 24, 0.5) 75%, rgba(11, 13, 24, 0.15) 100%);
+}
+
+.hero::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  left: 62%;
+  top: 48%;
+  width: min(1120px, 92vw);
+  height: min(780px, 76vh);
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle at center, rgba(141, 150, 255, 0.2) 0%, rgba(141, 150, 255, 0.08) 36%, transparent 70%);
+  filter: blur(8px);
+  pointer-events: none;
+}
+
+.hero-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  width: 100%;
+  max-width: 1180px;
+  min-height: 0;
+  margin: 0 auto;
+  align-items: center;
+  gap: clamp(1.6rem, 3.8vw, 3.2rem);
+}
+
+.eyebrow {
+  display: inline-flex;
+  justify-self: start;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--line) 76%, #ffffff 24%);
+  background: color-mix(in srgb, var(--accent-soft) 72%, rgba(255, 255, 255, 0.03));
+  color: var(--muted-strong);
+  padding: 0.42rem 0.82rem;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  margin-bottom: 0.9rem;
+}
+
+.hero-inner {
+  display: grid;
+  align-content: center;
+  align-items: center;
+  justify-items: start;
+  gap: clamp(0.8rem, 2vw, 1.35rem);
+  width: 100%;
+  max-width: 640px;
+  min-width: 0;
+  text-align: left;
+}
+
+.hero-inner h1 {
+  font-size: clamp(3.2rem, 6.4vw, 5.55rem);
+  font-weight: 840;
+  letter-spacing: -0.045em;
+  line-height: 0.96;
+  max-width: 11ch;
+}
+
+.lead {
+  color: var(--muted);
+  font-size: clamp(1.02rem, 1.6vw, 1.22rem);
+  max-width: 46ch;
+  margin-top: 0.2rem;
+}
+
+.hero-subtitle {
+  font-size: clamp(1.2rem, 2.25vw, 1.75rem);
+  font-weight: 640;
+  letter-spacing: -0.02em;
+  color: var(--muted-strong);
+  max-width: 24ch;
+  margin-top: 0.2rem;
+}
+
+.hero .hero-actions {
+  justify-content: flex-start;
+  margin-top: 0.65rem;
+  gap: var(--space-3);
+}
+
+.hero .button {
+  min-height: 50px;
+  padding: 0.72rem 1.35rem;
+  font-size: 1rem;
+}
+
+.hero .button.ghost {
+  border-color: color-mix(in srgb, var(--line) 66%, #ffffff 34%);
+  color: var(--muted-strong);
+}
+
+.hero .button.ghost:hover,
+.hero .button.ghost:focus-visible {
+  color: var(--text);
+}
+
+.hero-gh-link,
+.hero-install-link {
+  color: var(--muted-strong);
+  font-weight: 520;
+  width: fit-content;
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--muted-strong) 42%, transparent);
+  line-height: 1.2;
+}
+
+.hero-gh-link:hover,
+.hero-gh-link:focus-visible,
+.hero-install-link:hover,
+.hero-install-link:focus-visible {
+  color: var(--text);
+  border-bottom-color: color-mix(in srgb, var(--text) 65%, transparent);
+}
+
+.hero-points {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.hero-points li {
+  padding-left: 1.15rem;
+  position: relative;
+  color: var(--muted-strong);
+}
+
+.hero-points li::before {
+  content: "";
+  position: absolute;
+  width: 0.48rem;
+  height: 0.48rem;
+  border-radius: 999px;
+  left: 0;
+  top: 0.6rem;
+  background: var(--ok);
+}
+
+.proof-strip {
+  margin-top: var(--space-4);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  list-style: none;
+  padding: 0;
+}
+
+.proof-strip li {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.85rem;
+  color: var(--muted-strong);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.benefit-stripe {
+  padding-top: var(--space-4);
+  margin-top: 0;
+}
+
+.benefit-grid {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.benefit-tile {
+  padding: var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--line) 72%, rgba(255, 255, 255, 0.14));
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, rgba(15, 18, 34, 0.92), rgba(11, 14, 28, 0.94));
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+}
+
+.benefit-tile strong {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 1.02rem;
+}
+
+.benefit-tile p {
+  color: var(--muted-strong);
+  font-size: 0.95rem;
+}
+
+.slices {
+  padding-top: var(--space-8);
+  padding-bottom: var(--space-8);
+}
+
+.slice {
+  display: grid;
+  gap: var(--space-5);
+  align-items: center;
+  margin-bottom: var(--space-8);
+}
+
+.slice:last-child {
+  margin-bottom: 0;
+}
+
+.slice-copy {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 48ch;
+}
+
+.slice-copy h2 {
+  font-size: clamp(1.7rem, 3.2vw, 2.5rem);
+}
+
+.slice-copy p {
+  color: var(--muted);
+}
+
+.slice-points {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.slice-points li {
+  color: var(--muted-strong);
+}
+
+.slice-media {
+  padding: 0;
+  overflow: hidden;
+}
+
+.slice-media img {
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, 0.34),
+    0 34px 70px rgba(0, 0, 0, 0.24);
+}
+
+/* Hero-Screenshot als frei floatendes Browser-Mockup */
+.hero-media {
+  display: grid;
+  padding: 0;
+  position: relative;
+  overflow: visible;
+  width: 100%;
+  max-width: 760px;
+  height: auto;
+  margin: 0;
+  min-width: 0;
+  justify-self: end;
+  z-index: 3;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(20, 24, 46, 0.96), rgba(14, 17, 33, 0.96));
+  border: 1px solid color-mix(in srgb, rgba(255, 255, 255, 0.22) 74%, var(--accent) 26%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.2) inset,
+    0 36px 90px rgba(0, 0, 0, 0.52),
+    0 84px 170px rgba(0, 0, 0, 0.38),
+    0 22px 64px rgba(141, 150, 255, 0.26);
+  isolation: isolate;
+}
+
+.hero-media::after {
+  content: "";
+  position: absolute;
+  inset: 8% -7% -12% -7%;
+  z-index: -1;
+  background: radial-gradient(circle at 40% 45%, rgba(141, 150, 255, 0.24) 0%, rgba(141, 150, 255, 0.08) 44%, transparent 76%);
+  filter: blur(20px);
+  pointer-events: none;
+}
+
+.hero-browser {
+  background: rgba(16, 18, 34, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 11px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  z-index: 1;
+}
+
+.hero-browser-dots {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.hero-browser-dots span {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  display: block;
+}
+
+.hero-browser-dots span:nth-child(1) { background: #ff5f57; }
+.hero-browser-dots span:nth-child(2) { background: #febc2e; }
+.hero-browser-dots span:nth-child(3) { background: #28c840; }
+
+.hero-browser-url {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hero-media picture {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 0 0 19px 19px;
+}
+
+.hero-media img {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  border-radius: 0 0 19px 19px;
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.05),
+    0 20px 56px rgba(0, 0, 0, 0.5),
+    0 48px 118px rgba(0, 0, 0, 0.3);
+}
+
+.hero-trust {
+  padding: 0 0 var(--space-4);
+}
+
+.hero-trust-list {
+  margin: 0;
+  padding: var(--space-3) 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  border-top: 1px solid color-mix(in srgb, var(--line-soft) 80%, transparent);
+  color: color-mix(in srgb, var(--muted-strong) 82%, transparent);
+  font-size: 0.86rem;
+  letter-spacing: 0.015em;
+}
+
+.hero-trust-list li:not(:last-child)::after {
+  content: "•";
+  margin-left: 1rem;
+  color: color-mix(in srgb, var(--muted) 55%, transparent);
+}
+
+.quickstart {
+  padding-top: var(--space-2);
+}
+
+.quickstart-shell {
+  padding: clamp(1rem, 2.8vw, 1.6rem);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(23, 27, 45, 0.92), rgba(20, 24, 40, 0.9));
+  box-shadow: var(--shadow);
+}
+
+.quickstart-shell h2 {
+  font-size: clamp(1.4rem, 2.8vw, 2rem);
+}
+
+.quickstart-lead {
+  margin-top: 0.35rem;
+  color: var(--muted);
+}
+
+.quickstart-blocks {
+  margin-top: var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+}
+
+.quickstart-code {
+  margin: 0;
+  display: grid;
+  gap: 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--line) 78%, rgba(255, 255, 255, 0.2));
+  border-radius: var(--radius-sm);
+  background: rgba(9, 12, 24, 0.78);
+  padding: 0.72rem;
+}
+
+.quickstart-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.quickstart-code-label {
+  font-size: 0.82rem;
+  color: var(--muted-strong);
+  letter-spacing: 0.015em;
+}
+
+.quickstart-copy-btn {
+  border: 1px solid color-mix(in srgb, var(--line) 70%, rgba(255, 255, 255, 0.24));
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted-strong);
+  font: inherit;
+  font-size: 0.82rem;
+  line-height: 1;
+  padding: 0.42rem 0.72rem;
+  cursor: pointer;
+}
+
+.quickstart-copy-btn:hover,
+.quickstart-copy-btn:focus-visible {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 55%, rgba(255, 255, 255, 0.34));
+  background: color-mix(in srgb, var(--accent-soft) 38%, rgba(255, 255, 255, 0.04));
+}
+
+.quickstart pre {
+  margin: 0;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: clamp(0.76rem, 1.7vw, 0.9rem);
+  line-height: 1.55;
+  color: color-mix(in srgb, var(--muted-strong) 92%, #ffffff 8%);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.quickstart-status {
+  min-height: 1.2em;
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  color: var(--ok);
+}
+
+.quickstart-hint {
+  margin-top: var(--space-3);
+  font-size: 0.9rem;
+  color: var(--muted-strong);
+}
+
+.feature-grid,
+.usecase-grid,
+.gallery-grid {
+  margin-top: var(--space-5);
+  display: grid;
+  gap: var(--space-4);
+}
+
+.feature-grid {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.feature-grid-plain {
+  gap: var(--space-3);
+}
+
+.feature-grid-plain .feature:nth-child(3) {
+  margin-top: var(--space-3);
+}
+
+#features .feature-grid-plain .feature:nth-child(-n + 2) .feature-title,
+#vergleich .feature-grid-plain .feature:nth-child(-n + 2) .feature-title {
+  font-weight: 760;
+  letter-spacing: -0.01em;
+}
+
+.feature-plain {
+  padding: var(--space-4) var(--space-3);
+  border-top: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
+}
+
+.feature-plain:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 40%, rgba(255, 255, 255, 0.06));
+  background: rgba(255, 255, 255, 0.02);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+}
+
+.feature-plain h3,
+.feature-title {
+  margin-bottom: 0.35rem;
+}
+
+.feature-plain p {
+  color: var(--muted);
+  max-width: 52ch;
+}
+
+.feature-title {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.feature-icon {
+  display: inline-flex;
+  width: 1.2rem;
+  height: 1.2rem;
+  color: var(--muted-strong);
+  flex: 0 0 auto;
+}
+
+.feature-icon svg {
+  width: 100%;
+  height: 100%;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.feature-mini-cta {
+  margin-top: var(--space-5);
+  padding: var(--space-4);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.feature-mini-cta p {
+  color: var(--muted);
+  max-width: 62ch;
+}
+
+.gallery-grid figcaption {
+  margin-top: var(--space-3);
+  font-size: 0.92rem;
+}
+
+.trust {
+  background: linear-gradient(180deg, rgba(9, 12, 24, 0.6), rgba(9, 12, 24, 0.1));
+}
+
+.trust-grid {
+  display: grid;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.check-list {
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-3);
+}
+
+.check-list li {
+  color: var(--muted-strong);
+  padding-left: 1.2rem;
+  position: relative;
+}
+
+.check-list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.58rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--ok);
+}
+
+.cta {
+  padding-bottom: var(--space-8);
+}
+
+.cta-panel {
+  text-align: center;
+  display: grid;
+  gap: var(--space-4);
+}
+
+.cta-panel .hero-actions {
+  justify-content: center;
+}
+
+.cta-gh-link {
+  justify-self: center;
+}
+
+.legal-page {
+  padding: var(--space-6);
+  display: grid;
+  gap: var(--space-4);
+}
+
+.legal-page h2 {
+  margin-top: var(--space-3);
+}
+
+.legal-page ul {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--muted-strong);
+}
+
+@media (min-width: 901px) {
+  .hero-grid {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    column-gap: 48px;
+    align-items: start;
+  }
+
+  .hero-media {
+    margin-top: 8px;
+  }
+
+  .trust-grid {
+    grid-template-columns: 1.1fr 0.9fr;
+  }
+
+  .gallery-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .usecase-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .feature-grid-plain {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-6);
+  }
+
+  .slice {
+    grid-template-columns: 1fr 1fr;
+    column-gap: var(--space-7);
+  }
+
+  .slice.is-reverse .slice-media {
+    order: -1;
+  }
+}
+
+@media (max-width: 900px) {
+  .hero {
+    min-height: 100vh;
+    min-height: 100svh;
+    min-height: 100dvh;
+    height: auto;
+    padding-top: clamp(3.75rem, 12vw, 5.2rem);
+    padding-bottom: max(clamp(0.8rem, 2.8vw, 1.4rem), calc(32px + env(safe-area-inset-bottom)));
+  }
+
+  .hero-grid {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: auto;
+    width: 100%;
+    gap: clamp(0.9rem, 2.8vw, 1.35rem);
+    justify-items: center;
+  }
+
+  .hero::before {
+    left: 50%;
+    top: 30%;
+    width: min(920px, 120vw);
+    height: 540px;
+  }
+
+  .hero-inner {
+    width: min(620px, 100%);
+    order: 1;
+    gap: clamp(0.3rem, 0.9vw, 0.62rem);
+  }
+
+  .hero-subtitle {
+    font-size: clamp(0.96rem, 3.35vw, 1.1rem);
+    line-height: 1.28;
+    max-width: 34ch;
+    margin-top: 0.1rem;
+    text-wrap: balance;
+  }
+
+  .hero-inner h1 {
+    font-size: clamp(1.92rem, 7.9vw, 2.42rem);
+    line-height: 1.06;
+    max-width: 12ch;
+  }
+
+  .eyebrow {
+    padding: 0.24rem 0.52rem;
+    font-size: 0.7rem;
+    line-height: 1.15;
+    letter-spacing: 0.01em;
+    margin-bottom: 0.5rem;
+    max-width: min(100%, 34ch);
+    white-space: normal;
+    text-wrap: balance;
+  }
+
+  .lead {
+    font-size: clamp(0.93rem, 3.05vw, 1rem);
+    line-height: 1.42;
+    margin-top: 0.1rem;
+  }
+
+  .hero .hero-actions {
+    justify-content: flex-start;
+    margin-top: 1rem;
+    gap: 0.55rem;
+  }
+
+  .hero .button {
+    min-height: 44px;
+    padding: 0.58rem 1.02rem;
+    font-size: 0.92rem;
+  }
+
+  .hero .button.ghost {
+    color: color-mix(in srgb, var(--muted-strong) 88%, #ffffff 12%);
+    border-color: color-mix(in srgb, var(--line) 72%, #ffffff 28%);
+    background: rgba(255, 255, 255, 0.01);
+    font-weight: 620;
+  }
+
+  .hero-media {
+    width: min(840px, 100%);
+    max-width: 100%;
+    height: auto;
+    order: 2;
+    justify-self: center;
+    border-radius: 18px;
+    margin-top: clamp(0.95rem, 2.5vw, 1.45rem);
+    margin-bottom: 0;
+    box-shadow:
+      0 2px 0 rgba(255, 255, 255, 0.08) inset,
+      0 22px 58px rgba(0, 0, 0, 0.52),
+      0 44px 108px rgba(0, 0, 0, 0.32),
+      0 18px 50px rgba(141, 150, 255, 0.2);
+  }
+
+  .hero-media[data-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .hero .social-proof {
+    margin-top: 0;
+    font-size: 0.86rem;
+  }
+
+  .hero-install-link {
+    margin-top: 0;
+    font-size: 0.92rem;
+  }
+
+  .hero-browser {
+    padding: 9px 12px;
+  }
+
+  .hero-browser-url {
+    font-size: 0.68rem;
+  }
+
+  .hero-trust-list {
+    gap: 0.4rem 0.9rem;
+  }
+
+  .hero-trust-list li:not(:last-child)::after {
+    margin-left: 0.8rem;
+  }
+}
+
+@media (max-width: 740px) {
+  .eyebrow {
+    padding: 0.22rem 0.48rem;
+    font-size: 0.68rem;
+  }
+
+  .hero-inner h1 {
+    line-height: 1.08;
+  }
+
+  .hero .hero-actions {
+    margin-top: 0.9rem;
+  }
+
+  .hero-media {
+    margin-top: clamp(1.15rem, 3.4vw, 1.8rem);
+  }
+}
+
+@media (max-width: 900px) and (max-height: 700px) {
+  .hero {
+    padding-top: clamp(3.3rem, 10.8vw, 4.6rem);
+    padding-bottom: calc(32px + env(safe-area-inset-bottom));
+  }
+
+  .hero-inner {
+    gap: 0.28rem;
+  }
+
+  .hero-inner h1 {
+    font-size: clamp(1.8rem, 7vw, 2.1rem);
+    line-height: 1.06;
+  }
+
+  .hero-subtitle {
+    font-size: clamp(0.9rem, 3.05vw, 0.98rem);
+  }
+
+  .hero .social-proof {
+    display: none;
+  }
+
+  .hero .hero-actions {
+    margin-top: 0.92rem;
+  }
+}
+
+@media (min-width: 901px) and (max-height: 1020px) {
+  .hero {
+    padding-top: clamp(6.1rem, 8.9vh, 7.2rem);
+    padding-bottom: max(clamp(2.4rem, 4.9vh, 3.4rem), calc(32px + env(safe-area-inset-bottom)));
+  }
+
+  .hero-grid {
+    gap: clamp(1.45rem, 3vw, 2.6rem);
+  }
+}
+
+@media (min-width: 901px) and (max-height: 900px) {
+  .hero {
+    padding-top: clamp(5.7rem, 8.6vh, 6.7rem);
+    padding-bottom: max(clamp(2.25rem, 4.7vh, 3.2rem), calc(32px + env(safe-area-inset-bottom)));
+  }
+
+  .hero-grid {
+    gap: clamp(1.35rem, 2.8vw, 2.4rem);
+  }
+
+  .hero-inner {
+    gap: clamp(0.7rem, 1.5vw, 1.05rem);
+  }
+
+  .hero .hero-actions {
+    margin-top: 0.5rem;
+  }
+}
+
+@media (min-width: 901px) {
+  .benefit-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feature,
+  .feature:hover,
+  .feature-plain {
+    transition: none;
+    transform: none;
+  }
+
+  .feature-plain:hover {
+    transform: none;
+  }
+}
+    </style>
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "FlatWiki",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web, Linux, Docker",
+        "url": "https://flatwiki.de/",
+        "downloadUrl": "https://github.com/McCryptoX/flatwiki",
+        "description": "Datenschutzfreundliches Flat-File-Wiki mit Suchfokus, AES-256-GCM Verschlüsselung, Kommentarsystem, Admin-Workflows und Self-Hosting.",
+        "softwareHelp": "https://github.com/McCryptoX/flatwiki#readme",
+        "offers": {
+          "@type": "Offer",
+          "price": "0",
+          "priceCurrency": "EUR"
+        },
+        "publisher": {
+          "@type": "Organization",
+          "name": "FlatWiki"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Zum Inhalt springen</a>
+
+    <header class="site-header" id="top">
+      <div class="container header-inner">
+        <a class="brand" href="#top" aria-label="FlatWiki Startseite">
+          <strong>FlatWiki</strong>
+          <span>Sicheres Flat-File Wiki</span>
+        </a>
+        <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="primary-nav">Menü</button>
+        <nav class="header-nav" id="primary-nav" aria-label="Primäre Navigation">
+          <a href="#features">Features</a>
+          <a href="https://github.com/McCryptoX/flatwiki#readme" target="_blank" rel="noopener noreferrer">Docs</a>
+          <a href="https://github.com/McCryptoX/flatwiki" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="http://wiki.flatwiki.de" target="_blank" rel="noopener noreferrer">Demo</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main-content">
+      <section class="hero section" aria-labelledby="hero-title">
+        <div class="container hero-grid">
+          <div class="hero-inner" data-reveal>
+            <p class="eyebrow">Open Source · MIT Lizenz · Self-hosted</p>
+            <h1 id="hero-title">Wissen sofort wiederfinden.</h1>
+            <h2 class="hero-subtitle">Self-hosted Wiki für Teams – ohne verpflichtende Datenbank, ohne Tracking, ohne Lock-in.</h2>
+            <p class="lead">FlatWiki macht aus Notizen ein durchsuchbares Wissenssystem – schnell, privat, auf deiner Infrastruktur.</p>
+            <div class="hero-actions">
+              <a class="button" href="http://wiki.flatwiki.de" target="_blank" rel="noopener noreferrer">Demo live ausprobieren</a>
+              <a class="button ghost" href="https://github.com/McCryptoX/flatwiki" target="_blank" rel="noopener noreferrer">Quellcode auf GitHub</a>
+            </div>
+            <p class="social-proof">In 2–5 Minuten startklar (Docker).</p>
+            <a class="hero-install-link" href="https://github.com/McCryptoX/flatwiki#readme" target="_blank" rel="noopener noreferrer">Installation ansehen</a>
+          </div>
+          <figure class="hero-media" data-reveal>
+            <div class="hero-browser" aria-hidden="true">
+              <div class="hero-browser-dots">
+                <span></span><span></span><span></span>
+              </div>
+              <div class="hero-browser-url">wiki.flatwiki.de</div>
+            </div>
+            <picture>
+              <source
+                type="image/avif"
+                srcset="./assets/images/ui-home-dark-480.avif 480w, ./assets/images/ui-home-dark-560.avif 560w, ./assets/images/ui-home-dark-640.avif 640w, ./assets/images/ui-home-dark-760.avif 760w, ./assets/images/ui-home-dark-880.avif 880w, ./assets/images/ui-home-dark-960.avif 960w"
+                sizes="(max-width: 900px) 96vw, (max-width: 1565px) 46vw, 720px"
+              />
+              <source
+                type="image/webp"
+                srcset="./assets/images/ui-home-dark-480.webp 480w, ./assets/images/ui-home-dark-560.webp 560w, ./assets/images/ui-home-dark-640.webp 640w, ./assets/images/ui-home-dark-760.webp 760w, ./assets/images/ui-home-dark-880.webp 880w, ./assets/images/ui-home-dark-960.webp 960w"
+                sizes="(max-width: 900px) 96vw, (max-width: 1565px) 46vw, 720px"
+              />
+              <img
+                src="./assets/images/ui-home-dark-960.jpg"
+                srcset="./assets/images/ui-home-dark-480.jpg 480w, ./assets/images/ui-home-dark-560.jpg 560w, ./assets/images/ui-home-dark-640.jpg 640w, ./assets/images/ui-home-dark-760.jpg 760w, ./assets/images/ui-home-dark-880.jpg 880w, ./assets/images/ui-home-dark-960.jpg 960w"
+                sizes="(max-width: 900px) 96vw, (max-width: 1565px) 46vw, 720px"
+                width="2940"
+                height="1848"
+                alt="FlatWiki Startseite im Dark Mode mit zentraler Suchoberfläche"
+                loading="eager"
+                decoding="async"
+                fetchpriority="high"
+              />
+            </picture>
+          </figure>
+        </div>
+      </section>
+      <section class="hero-trust" aria-label="Vertrauen">
+        <div class="container">
+          <ul class="hero-trust-list">
+            <li>Open Source (MIT)</li>
+            <li>Self-hosted</li>
+            <li>Keine Datenbank erforderlich</li>
+            <li>Optional verschlüsselt</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="section quickstart" id="quickstart" aria-labelledby="quickstart-title">
+        <div class="container quickstart-shell" data-reveal>
+          <h2 id="quickstart-title">In 30 Sekunden starten</h2>
+          <p class="quickstart-lead">Clone, installieren, läuft. Kein DB-Setup.</p>
+
+          <div class="quickstart-blocks">
+            <div class="quickstart-code">
+              <div class="quickstart-code-head">
+                <span class="quickstart-code-label">Quickstart</span>
+                <button class="quickstart-copy-btn" type="button" data-copy-target="quickstart-install" aria-label="Quickstart-Befehl kopieren">Kopieren</button>
+              </div>
+              <pre id="quickstart-install"><code>git clone https://github.com/McCryptoX/flatwiki && cd flatwiki && ./install.sh</code></pre>
+              <p class="quickstart-status" role="status" aria-live="polite"></p>
+            </div>
+
+            <div class="quickstart-code">
+              <div class="quickstart-code-head">
+                <span class="quickstart-code-label">Check</span>
+                <button class="quickstart-copy-btn" type="button" data-copy-target="quickstart-check" aria-label="Check-Befehl kopieren">Kopieren</button>
+              </div>
+              <pre id="quickstart-check"><code>docker compose ps</code></pre>
+              <p class="quickstart-status" role="status" aria-live="polite"></p>
+            </div>
+          </div>
+
+          <p class="quickstart-hint">Danach öffnen: http://127.0.0.1:3000/setup (erster Start)</p>
+        </div>
+      </section>
+
+      <section class="section benefit-stripe" aria-label="Kernvorteile">
+        <div class="container">
+          <div class="benefit-grid">
+            <article class="benefit-tile" data-reveal>
+              <strong>Schnell finden</strong>
+              <p>Volltextsuche bringt Antworten in Sekunden.</p>
+            </article>
+            <article class="benefit-tile" data-reveal>
+              <strong>Privat betreiben</strong>
+              <p>Self-hosted und ohne Tracking: Die Daten bleiben bei dir.</p>
+            </article>
+            <article class="benefit-tile" data-reveal>
+              <strong>Offen speichern</strong>
+              <p>Dateien: Markdown statt proprietär. Einfach sichern, umziehen, versionieren.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section slices" id="slices" aria-label="Produkt-Highlights">
+        <div class="container">
+          <article class="slice">
+            <div class="slice-copy" data-reveal>
+              <h2>Wissen direkt im Arbeitsfluss dokumentieren.</h2>
+              <p>Seiten bleiben klar strukturiert, auch wenn Inhalte und Team wachsen.</p>
+              <ul class="slice-points">
+                <li>Lange Inhalte bleiben gut lesbar.</li>
+                <li>Navigation und Volltextsuche reagieren schnell.</li>
+                <li>Wissen bleibt direkt im Tagesgeschäft nutzbar.</li>
+              </ul>
+            </div>
+            <figure class="card slice-media" data-reveal>
+              <picture>
+                <source
+                  type="image/avif"
+                  srcset="./assets/images/ui-editor-480.avif 480w, ./assets/images/ui-editor-560.avif 560w, ./assets/images/ui-editor-640.avif 640w, ./assets/images/ui-editor-760.avif 760w, ./assets/images/ui-editor-880.avif 880w, ./assets/images/ui-editor-960.avif 960w, ./assets/images/ui-editor-1400.avif 1400w"
+                  sizes="(max-width: 900px) 92vw, (max-width: 1200px) 44vw, 520px"
+                />
+              <source
+                type="image/webp"
+                srcset="./assets/images/ui-editor-480.webp 480w, ./assets/images/ui-editor-560.webp 560w, ./assets/images/ui-editor-640.webp 640w, ./assets/images/ui-editor-760.webp 760w, ./assets/images/ui-editor-880.webp 880w, ./assets/images/ui-editor-960.webp 960w, ./assets/images/ui-editor-1400.webp 1400w"
+                sizes="(max-width: 900px) 92vw, (max-width: 1200px) 44vw, 520px"
+              />
+                <img
+                  src="./assets/images/ui-editor-960.jpg"
+                  srcset="./assets/images/ui-editor-480.jpg 480w, ./assets/images/ui-editor-560.jpg 560w, ./assets/images/ui-editor-640.jpg 640w, ./assets/images/ui-editor-760.jpg 760w, ./assets/images/ui-editor-880.jpg 880w, ./assets/images/ui-editor-960.jpg 960w, ./assets/images/ui-editor-1400.jpg 1400w"
+                  sizes="(max-width: 900px) 92vw, (max-width: 1200px) 44vw, 520px"
+                  width="2940"
+                  height="1848"
+                  alt="Bearbeitungsansicht von FlatWiki mit Markdown-Editor"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </picture>
+            </figure>
+          </article>
+
+          <article class="slice is-reverse">
+            <div class="slice-copy" data-reveal>
+              <h2>Diskussionen nachvollziehbar halten.</h2>
+              <p>Kommentare, Moderation und Verlauf machen Entscheidungen transparent.</p>
+              <ul class="slice-points">
+                <li>@mentions direkt an der Seite.</li>
+                <li>Moderation ohne Tool-Wechsel.</li>
+                <li>Verlauf bleibt nachvollziehbar dokumentiert.</li>
+              </ul>
+            </div>
+            <figure class="card slice-media" data-reveal>
+              <picture>
+                <source
+                  type="image/avif"
+                  srcset="./assets/images/ui-comments-480.avif 480w, ./assets/images/ui-comments-560.avif 560w, ./assets/images/ui-comments-640.avif 640w, ./assets/images/ui-comments-760.avif 760w, ./assets/images/ui-comments-880.avif 880w, ./assets/images/ui-comments-960.avif 960w, ./assets/images/ui-comments-1400.avif 1400w"
+                  sizes="(max-width: 900px) 92vw, (max-width: 1200px) 44vw, 520px"
+                />
+              <source
+                type="image/webp"
+                srcset="./assets/images/ui-comments-480.webp 480w, ./assets/images/ui-comments-560.webp 560w, ./assets/images/ui-comments-640.webp 640w, ./assets/images/ui-comments-760.webp 760w, ./assets/images/ui-comments-880.webp 880w, ./assets/images/ui-comments-960.webp 960w, ./assets/images/ui-comments-1400.webp 1400w"
+                sizes="(max-width: 900px) 92vw, (max-width: 1200px) 44vw, 520px"
+              />
+                <img
+                  src="./assets/images/ui-comments-960.jpg"
+                  srcset="./assets/images/ui-comments-480.jpg 480w, ./assets/images/ui-comments-560.jpg 560w, ./assets/images/ui-comments-640.jpg 640w, ./assets/images/ui-comments-760.jpg 760w, ./assets/images/ui-comments-880.jpg 880w, ./assets/images/ui-comments-960.jpg 960w, ./assets/images/ui-comments-1400.jpg 1400w"
+                  sizes="(max-width: 900px) 92vw, (max-width: 1200px) 44vw, 520px"
+                  width="2940"
+                  height="1844"
+                  alt="Kommentarbereich in FlatWiki mit @mention-Funktion und Moderationsstatus"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </picture>
+            </figure>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="features" aria-labelledby="features-title">
+        <div class="container">
+          <h2 id="features-title">Wissen zuverlässig organisieren</h2>
+          <p class="section-intro">Von der ersten Notiz bis zum laufenden Betrieb: FlatWiki bleibt klar, schnell und wartbar.</p>
+          <div class="feature-grid feature-grid-plain">
+            <article class="feature feature-plain" data-reveal>
+              <h3 class="feature-title">
+                <span class="feature-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="m19 12 2-1-2-1-.6-1.4.8-2.1-2.1.8L15.7 6 14.7 4l-1 .6L12 3l-1.7 1.6-1-.6-1 2-1.4.7-2.1-.8.8 2.1L5 10l-2 1 2 1 .6 1.4-.8 2.1 2.1-.8 1.4.7 1 2 1-.6L12 21l1.7-1.6 1 .6 1-2 1.4-.7 2.1.8-.8-2.1z"></path></svg>
+                </span>
+                <span>Schnell produktiv starten</span>
+              </h3>
+              <p>Mit Docker oder Node.js in wenigen Minuten bereit. Läuft ohne Datenbank-Server; SQLite optional (für Index/Performance).</p>
+            </article>
+            <article class="feature feature-plain" data-reveal>
+              <h3 class="feature-title">
+                <span class="feature-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M3 7a2 2 0 0 1 2-2h4l2 2"></path></svg>
+                </span>
+                <span>Dateien statt Lock-in</span>
+              </h3>
+              <p>Markdown-Dateien statt proprietärer Formate. Backups und Versionierung bleiben einfach.</p>
+            </article>
+            <article class="feature feature-plain" data-reveal>
+              <h3 class="feature-title">
+                <span class="feature-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M21 15a3 3 0 0 1-3 3H8l-4 3V6a3 3 0 0 1 3-3h11a3 3 0 0 1 3 3z"></path><circle cx="10" cy="11" r="1"></circle><circle cx="14" cy="11" r="1"></circle><circle cx="18" cy="11" r="1"></circle></svg>
+                </span>
+                <span>Abstimmungen im Kontext halten</span>
+              </h3>
+              <p>Kommentare, @mentions und Moderation halten Entscheidungen direkt an der Seite fest.</p>
+            </article>
+            <article class="feature feature-plain" data-reveal>
+              <h3 class="feature-title">
+                <span class="feature-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
+                </span>
+                <span>Sensible Inhalte schützen</span>
+              </h3>
+              <p>Optionale Verschlüsselung und Zugriffskontrolle schützen sensible Bereiche im Betrieb.</p>
+            </article>
+            <article class="feature feature-plain" data-reveal>
+              <h3 class="feature-title">
+                <span class="feature-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"></circle><path d="m20 20-3.5-3.5"></path></svg>
+                </span>
+                <span>Wissen sofort wiederfinden</span>
+              </h3>
+              <p>Die Volltextsuche liefert Antworten schnell, auch bei wachsenden Inhalten.</p>
+            </article>
+            <article class="feature feature-plain" data-reveal>
+              <h3 class="feature-title">
+                <span class="feature-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M3 5h18"></path><path d="M3 12h18"></path><path d="M3 19h18"></path><path d="M7 9v6"></path><path d="M17 5v6"></path></svg>
+                </span>
+                <span>Einfach betreiben</span>
+              </h3>
+              <p>Benutzerverwaltung, Backups und Änderungsverlauf unterstützen einen stabilen Betrieb.</p>
+            </article>
+          </div>
+          <div class="feature-mini-cta" data-reveal>
+            <p>Teste FlatWiki direkt in der Demo oder starte in deiner eigenen Umgebung.</p>
+            <div class="hero-actions">
+              <a class="button" href="http://wiki.flatwiki.de" target="_blank" rel="noopener noreferrer">Demo live ausprobieren</a>
+              <a class="button ghost" href="https://github.com/McCryptoX/flatwiki#readme" target="_blank" rel="noopener noreferrer">Installation ansehen</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="produkt" aria-labelledby="produkt-title">
+        <div class="container">
+          <h2 id="produkt-title">So arbeitet FlatWiki im Alltag</h2>
+          <p class="section-intro">Eine ruhige Oberfläche für Lesen, Schreiben, Moderation und Administration.</p>
+          <div class="gallery-grid">
+            <figure class="card" data-reveal>
+              <picture>
+                <source
+                  type="image/avif"
+                  srcset="./assets/images/ui-article-480.avif 480w, ./assets/images/ui-article-560.avif 560w, ./assets/images/ui-article-640.avif 640w, ./assets/images/ui-article-760.avif 760w, ./assets/images/ui-article-880.avif 880w, ./assets/images/ui-article-960.avif 960w, ./assets/images/ui-article-1400.avif 1400w"
+                  sizes="(max-width: 900px) 92vw, (max-width: 1200px) 42vw, 500px"
+                />
+              <source
+                type="image/webp"
+                srcset="./assets/images/ui-article-480.webp 480w, ./assets/images/ui-article-560.webp 560w, ./assets/images/ui-article-640.webp 640w, ./assets/images/ui-article-760.webp 760w, ./assets/images/ui-article-880.webp 880w, ./assets/images/ui-article-960.webp 960w, ./assets/images/ui-article-1400.webp 1400w"
+                sizes="(max-width: 900px) 92vw, (max-width: 1200px) 42vw, 500px"
+              />
+                <img
+                  src="./assets/images/ui-article-960.jpg"
+                  srcset="./assets/images/ui-article-480.jpg 480w, ./assets/images/ui-article-560.jpg 560w, ./assets/images/ui-article-640.jpg 640w, ./assets/images/ui-article-760.jpg 760w, ./assets/images/ui-article-880.jpg 880w, ./assets/images/ui-article-960.jpg 960w, ./assets/images/ui-article-1400.jpg 1400w"
+                  sizes="(max-width: 900px) 92vw, (max-width: 1200px) 42vw, 500px"
+                  width="2940"
+                  height="1846"
+                  alt="Artikelansicht in FlatWiki mit Inhaltsverzeichnis und strukturierter Lesedarstellung"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </picture>
+              <figcaption>Artikelansicht mit Fokus auf Lesbarkeit und Orientierung.</figcaption>
+            </figure>
+            <figure class="card" data-reveal>
+              <picture>
+                <source
+                  type="image/avif"
+                  srcset="./assets/images/ui-editor-480.avif 480w, ./assets/images/ui-editor-560.avif 560w, ./assets/images/ui-editor-640.avif 640w, ./assets/images/ui-editor-760.avif 760w, ./assets/images/ui-editor-880.avif 880w, ./assets/images/ui-editor-960.avif 960w, ./assets/images/ui-editor-1400.avif 1400w"
+                  sizes="(max-width: 900px) 92vw, 46vw"
+                />
+              <source
+                type="image/webp"
+                srcset="./assets/images/ui-editor-480.webp 480w, ./assets/images/ui-editor-560.webp 560w, ./assets/images/ui-editor-640.webp 640w, ./assets/images/ui-editor-760.webp 760w, ./assets/images/ui-editor-880.webp 880w, ./assets/images/ui-editor-960.webp 960w, ./assets/images/ui-editor-1400.webp 1400w"
+                sizes="(max-width: 900px) 92vw, 46vw"
+              />
+                <img
+                  src="./assets/images/ui-editor-960.jpg"
+                  srcset="./assets/images/ui-editor-480.jpg 480w, ./assets/images/ui-editor-560.jpg 560w, ./assets/images/ui-editor-640.jpg 640w, ./assets/images/ui-editor-760.jpg 760w, ./assets/images/ui-editor-880.jpg 880w, ./assets/images/ui-editor-960.jpg 960w, ./assets/images/ui-editor-1400.jpg 1400w"
+                  sizes="(max-width: 900px) 92vw, 46vw"
+                  width="2940"
+                  height="1848"
+                  alt="Bearbeitungsansicht von FlatWiki mit Markdown-Editor"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </picture>
+              <figcaption>Markdown-Workflow ohne komplexes Frontend-Framework.</figcaption>
+            </figure>
+            <figure class="card" data-reveal>
+              <picture>
+                <source
+                  type="image/avif"
+                  srcset="./assets/images/ui-admin-480.avif 480w, ./assets/images/ui-admin-560.avif 560w, ./assets/images/ui-admin-640.avif 640w, ./assets/images/ui-admin-760.avif 760w, ./assets/images/ui-admin-880.avif 880w, ./assets/images/ui-admin-960.avif 960w, ./assets/images/ui-admin-1400.avif 1400w"
+                  sizes="(max-width: 900px) 92vw, 46vw"
+                />
+              <source
+                type="image/webp"
+                srcset="./assets/images/ui-admin-480.webp 480w, ./assets/images/ui-admin-560.webp 560w, ./assets/images/ui-admin-640.webp 640w, ./assets/images/ui-admin-760.webp 760w, ./assets/images/ui-admin-880.webp 880w, ./assets/images/ui-admin-960.webp 960w, ./assets/images/ui-admin-1400.webp 1400w"
+                sizes="(max-width: 900px) 92vw, 46vw"
+              />
+                <img
+                  src="./assets/images/ui-admin-960.jpg"
+                  srcset="./assets/images/ui-admin-480.jpg 480w, ./assets/images/ui-admin-560.jpg 560w, ./assets/images/ui-admin-640.jpg 640w, ./assets/images/ui-admin-760.jpg 760w, ./assets/images/ui-admin-880.jpg 880w, ./assets/images/ui-admin-960.jpg 960w, ./assets/images/ui-admin-1400.jpg 1400w"
+                  sizes="(max-width: 900px) 92vw, 46vw"
+                  width="2940"
+                  height="1850"
+                  alt="Admin-Dashboard von FlatWiki mit Benutzerverwaltung und Systemübersicht"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </picture>
+              <figcaption>Admin-Dashboard: Benutzerverwaltung, Backup-Status und Systemkonfiguration.</figcaption>
+            </figure>
+            <figure class="card" data-reveal>
+              <picture>
+                <source
+                  type="image/avif"
+                  srcset="./assets/images/ui-comments-480.avif 480w, ./assets/images/ui-comments-560.avif 560w, ./assets/images/ui-comments-640.avif 640w, ./assets/images/ui-comments-760.avif 760w, ./assets/images/ui-comments-880.avif 880w, ./assets/images/ui-comments-960.avif 960w, ./assets/images/ui-comments-1400.avif 1400w"
+                  sizes="(max-width: 900px) 92vw, 46vw"
+                />
+              <source
+                type="image/webp"
+                srcset="./assets/images/ui-comments-480.webp 480w, ./assets/images/ui-comments-560.webp 560w, ./assets/images/ui-comments-640.webp 640w, ./assets/images/ui-comments-760.webp 760w, ./assets/images/ui-comments-880.webp 880w, ./assets/images/ui-comments-960.webp 960w, ./assets/images/ui-comments-1400.webp 1400w"
+                sizes="(max-width: 900px) 92vw, 46vw"
+              />
+                <img
+                  src="./assets/images/ui-comments-960.jpg"
+                  srcset="./assets/images/ui-comments-480.jpg 480w, ./assets/images/ui-comments-560.jpg 560w, ./assets/images/ui-comments-640.jpg 640w, ./assets/images/ui-comments-760.jpg 760w, ./assets/images/ui-comments-880.jpg 880w, ./assets/images/ui-comments-960.jpg 960w, ./assets/images/ui-comments-1400.jpg 1400w"
+                  sizes="(max-width: 900px) 92vw, 46vw"
+                  width="2940"
+                  height="1844"
+                  alt="Kommentarbereich in FlatWiki mit @mention-Funktion und Moderationsstatus"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </picture>
+              <figcaption>Kommentare mit @mentions und Admin-Moderation direkt an der Seite.</figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <section class="section trust" id="trust" aria-labelledby="trust-title">
+        <div class="container trust-grid">
+          <div data-reveal>
+            <h2 id="trust-title">Technik, die ruhig im Hintergrund arbeitet</h2>
+            <p>FlatWiki bleibt auch bei mehr Inhalten und mehr Nutzenden reaktionsschnell und planbar.</p>
+            <ul class="check-list">
+              <li>Volltextsuche und Navigation bleiben schnell.</li>
+              <li>Backups und Verlauf unterstützen den stabilen Betrieb.</li>
+              <li>Self-hosted heißt: Datenhoheit bleibt in deiner Infrastruktur.</li>
+            </ul>
+          </div>
+          <figure class="card" data-reveal>
+            <picture>
+              <source
+                type="image/avif"
+                srcset="./assets/images/psi-desktop-480.avif 480w, ./assets/images/psi-desktop-560.avif 560w, ./assets/images/psi-desktop-640.avif 640w, ./assets/images/psi-desktop-760.avif 760w, ./assets/images/psi-desktop-880.avif 880w, ./assets/images/psi-desktop-960.avif 960w, ./assets/images/psi-desktop-1400.avif 1400w"
+                sizes="(max-width: 900px) 92vw, (max-width: 1200px) 44vw, 520px"
+              />
+              <source
+                type="image/webp"
+                srcset="./assets/images/psi-desktop-480.webp 480w, ./assets/images/psi-desktop-560.webp 560w, ./assets/images/psi-desktop-640.webp 640w, ./assets/images/psi-desktop-760.webp 760w, ./assets/images/psi-desktop-880.webp 880w, ./assets/images/psi-desktop-960.webp 960w, ./assets/images/psi-desktop-1400.webp 1400w"
+                sizes="(max-width: 900px) 92vw, (max-width: 1200px) 44vw, 520px"
+              />
+              <img
+                src="./assets/images/psi-desktop-960.jpg"
+                srcset="./assets/images/psi-desktop-480.jpg 480w, ./assets/images/psi-desktop-560.jpg 560w, ./assets/images/psi-desktop-640.jpg 640w, ./assets/images/psi-desktop-760.jpg 760w, ./assets/images/psi-desktop-880.jpg 880w, ./assets/images/psi-desktop-960.jpg 960w, ./assets/images/psi-desktop-1400.jpg 1400w"
+                sizes="(max-width: 900px) 92vw, (max-width: 1200px) 44vw, 520px"
+                width="2934"
+                height="1844"
+                alt="PageSpeed Insights Ergebnis für FlatWiki auf Desktop mit Bewertung 100"
+                loading="lazy"
+                decoding="async"
+              />
+            </picture>
+            <figcaption>PageSpeed Insights (Desktop): 100 / 100 / 100 / 100.</figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="section" id="einsatz" aria-labelledby="einsatz-title">
+        <div class="container">
+          <h2 id="einsatz-title">Wofür Teams FlatWiki einsetzen</h2>
+          <div class="usecase-grid">
+            <article class="card" data-reveal>
+              <h3>Team-Handbuch</h3>
+              <p>Prozesse, Standards und Onboarding klar dokumentieren, damit neue Teammitglieder schneller starten.</p>
+            </article>
+            <article class="card" data-reveal>
+              <h3>FAQ &amp; Support-Wissen</h3>
+              <p>How-tos, Runbooks und häufige Fragen zentral sammeln, damit Antworten direkt verfügbar sind.</p>
+            </article>
+            <article class="card" data-reveal>
+              <h3>Projekte &amp; Entscheidungen</h3>
+              <p>Projektwissen, Beschlüsse und Hintergründe nachvollziehbar festhalten und später schnell wiederfinden.</p>
+            </article>
+            <article class="card" data-reveal>
+              <h3>Sensible Inhalte</h3>
+              <p>Datenschutzbewusste Teams steuern Zugriffe gezielt und nutzen bei Bedarf optionale Verschlüsselung.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section cta" aria-labelledby="cta-title">
+        <div class="container card cta-panel" data-reveal>
+          <h2 id="cta-title">FlatWiki in deinem Umfeld testen</h2>
+          <p>Probiere die Demo aus, prüfe die Installation und starte self-hosted in deiner Infrastruktur.</p>
+          <div class="hero-actions">
+            <a class="button" href="http://wiki.flatwiki.de" target="_blank" rel="noopener noreferrer">Demo live ausprobieren</a>
+            <a class="button ghost" href="https://github.com/McCryptoX/flatwiki#readme" target="_blank" rel="noopener noreferrer">Installation ansehen</a>
+          </div>
+          <a class="hero-gh-link cta-gh-link" href="https://github.com/McCryptoX/flatwiki" target="_blank" rel="noopener noreferrer">Quellcode auf GitHub</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-grid">
+        <div>
+          <strong>FlatWiki</strong>
+          <p>Diese Website nutzt keine Cookies und kein Tracking.</p>
+        </div>
+        <nav aria-label="Footer-Navigation">
+          <a href="http://wiki.flatwiki.de" target="_blank" rel="noopener noreferrer">Demo</a>
+          <a href="https://github.com/McCryptoX/flatwiki" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="https://github.com/McCryptoX/flatwiki#readme" target="_blank" rel="noopener noreferrer">Dokumentation</a>
+          <a href="./datenschutz.html">Datenschutz</a>
+          <a href="./impressum.html">Impressum</a>
+        </nav>
+      </div>
+      <p class="container footer-meta">Made with ❤️ in Germany · Open Source (MIT)</p>
+    </footer>
+
+    <script src="./assets/js/main.js" defer></script>
+  </body>
+</html>

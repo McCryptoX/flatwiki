@@ -35,11 +35,73 @@ describe("wiki crypto and integrity", () => {
       const rawPath = safeArticlePath(slug);
       const rawFile = await readFile(rawPath, "utf8");
 
-      expect(rawFile.includes("integrityVersion: 2")).toBe(true);
+      expect(rawFile.includes("integrityVersion: 3")).toBe(true);
       expect(rawFile.includes("integrityHmac:")).toBe(true);
       expect(rawFile.includes("encIv:")).toBe(true);
       expect(rawFile.includes("encTag:")).toBe(true);
       expect(rawFile.includes("encData:")).toBe(true);
+      expect(rawFile.includes(marker)).toBe(false);
+
+      const page = await getPage(slug);
+      expect(page).not.toBeNull();
+      expect(page?.encrypted).toBe(true);
+      expect(page?.content).toBe(marker);
+      expect(page?.integrityState).toBe("valid");
+    }
+  );
+
+  it.skipIf(!config.contentEncryptionKey || !config.contentIntegrityKey)(
+    "keeps integrity valid when encryption is toggled off and on again",
+    async () => {
+      const slug = `vitest-toggle-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+      const marker = `toggle-marker-${Date.now()}`;
+      createdSlugs.add(slug);
+
+      const firstSave = await savePage({
+        slug,
+        title: "Toggle Integrity Test",
+        tags: ["security", "toggle"],
+        content: marker,
+        updatedBy: "vitest",
+        securityProfile: "confidential",
+        allowedUsers: ["admin"]
+      });
+      expect(firstSave.ok).toBe(true);
+
+      const secondSave = await savePage({
+        slug,
+        title: "Toggle Integrity Test",
+        tags: ["security", "toggle"],
+        content: marker,
+        updatedBy: "vitest",
+        securityProfile: "standard",
+        sensitive: false,
+        encrypted: false,
+        visibility: "all",
+        allowedUsers: [],
+        allowedGroups: []
+      });
+      expect(secondSave.ok).toBe(true);
+
+      const thirdSave = await savePage({
+        slug,
+        title: "Toggle Integrity Test",
+        tags: ["security", "toggle"],
+        content: marker,
+        updatedBy: "vitest",
+        securityProfile: "standard",
+        sensitive: false,
+        encrypted: true,
+        visibility: "all",
+        allowedUsers: [],
+        allowedGroups: []
+      });
+      expect(thirdSave.ok).toBe(true);
+
+      const rawPath = safeArticlePath(slug);
+      const rawFile = await readFile(rawPath, "utf8");
+      expect(rawFile.includes("integrityVersion: 3")).toBe(true);
+      expect(rawFile.includes("encryptionMode: aes-256-gcm")).toBe(true);
       expect(rawFile.includes(marker)).toBe(false);
 
       const page = await getPage(slug);
