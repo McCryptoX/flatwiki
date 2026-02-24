@@ -1410,13 +1410,13 @@ export const renderAdminHeader = (input: {
   active?: AdminNavKey;
   actions?: string;
 }): string => `
-  <section class="page-header under-title admin-page-header">
-    <div class="admin-page-header-copy">
-      <h1>${input.title}</h1>
-      <p>${input.description}</p>
+  <div class="flex flex-col sm:flex-row sm:items-end justify-between mb-6 gap-4">
+    <div>
+      <h1 class="text-2xl font-bold text-white leading-tight">${input.title}</h1>
+      <p class="text-sm text-slate-400 mt-1">${input.description}</p>
     </div>
-    ${input.actions ? `<div class="action-row admin-page-actions">${input.actions}</div>` : ""}
-  </section>
+    ${input.actions ? `<div class="shrink-0 flex flex-wrap gap-2 justify-start sm:justify-end">${input.actions}</div>` : ""}
+  </div>
 `;
 
 export const renderAdminPage = (input: {

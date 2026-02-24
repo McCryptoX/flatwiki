@@ -223,7 +223,7 @@ export const renderLayout = (options: LayoutOptions): string => {
   const primaryAction = user
     ? pathname === "/new"
       ? ""
-      : '<a href="/new" class="button tiny">Neue Seite</a>'
+      : '<a href="/new" class="button">Neue Seite</a>'
     : pathname === "/login"
       ? ""
       : '<a href="/login" class="button tiny secondary">Anmelden</a>';

@@ -1857,9 +1857,9 @@ a.tag-chip:hover {
   min-width: 0;
   padding: 6px 20px;
   font-size: 0.875rem;
-  border-color: rgba(99, 102, 241, 0.5);
+  border-color: transparent;
   background: #4f46e5;
-  box-shadow: 0 10px 20px rgba(99, 102, 241, 0.25);
+  box-shadow: none;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -1878,7 +1878,7 @@ a.tag-chip:hover {
 .editor-shell-redesign .editor-topbar-actions .button:hover {
   background: #6366f1;
   transform: none;
-  box-shadow: 0 10px 20px rgba(99, 102, 241, 0.25);
+  box-shadow: none;
 }
 
 .editor-layout.editor-layout-redesign {
@@ -2078,7 +2078,7 @@ a.tag-chip:hover {
   background: color-mix(in srgb, var(--surface-1) 95%, transparent);
   -webkit-backdrop-filter: blur(4px);
   backdrop-filter: blur(4px);
-  padding: 0;
+  padding: 24px;
   position: static;
   min-height: 0;
   display: flex;
@@ -2087,7 +2087,7 @@ a.tag-chip:hover {
 }
 
 .editor-shell-redesign .editor-settings-head {
-  padding: 20px;
+  padding: 0 0 20px;
   border-bottom: 1px solid var(--line);
   background: transparent;
 }
@@ -2102,7 +2102,7 @@ a.tag-chip:hover {
 }
 
 .editor-shell-redesign .settings-section {
-  padding: 20px;
+  padding: 22px 0;
   gap: 14px;
   border: 0;
   flex: 1 1 auto;
@@ -2348,7 +2348,7 @@ a.tag-chip:hover {
 
 .editor-shell-redesign .settings-actions {
   margin-top: auto;
-  padding: 20px;
+  padding: 22px 0 0;
   border-top: 1px solid var(--line);
   background: transparent;
 }
@@ -2669,14 +2669,14 @@ button,
   cursor: pointer;
   text-decoration: none;
   gap: 0.3rem;
-  padding: 0.56rem 0.92rem;
+  padding: 0.5rem 1rem;
   color: white;
-  border-color: rgba(99, 102, 241, 0.35);
-  background: linear-gradient(180deg, #6366f1 0%, #4f46e5 100%);
-  font-weight: 600;
-  transition: background-color 160ms ease, transform 80ms ease;
+  border-color: transparent;
+  background: #4f46e5;
+  font-weight: 500;
+  transition: background-color 160ms ease;
   line-height: 1.4;
-  box-shadow: 0 10px 22px rgba(79, 70, 229, 0.32);
+  box-shadow: none;
 }
 
 :where(
@@ -2702,9 +2702,9 @@ button,
 
 button:hover,
 .button:hover {
-  background: linear-gradient(180deg, #818cf8 0%, #6366f1 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px var(--focus-ring);
+  background: #6366f1;
+  transform: none;
+  box-shadow: none;
 }
 
 button.secondary,
@@ -2712,16 +2712,16 @@ button.secondary,
 button.ghost,
 .button.ghost,
 a.admin-link {
-  color: var(--ink);
-  background: color-mix(in srgb, var(--surface-2, var(--bg-alt)) 88%, transparent);
-  border: 1px solid color-mix(in srgb, var(--border-subtle, var(--line)) 95%, transparent);
+  color: #fff;
+  background: #1f2937;
+  border: 1px solid #374151;
   box-shadow: none;
 }
 
 button.secondary:hover,
 .button.secondary:hover {
-  background: var(--surface-3, var(--card));
-  border-color: var(--accent);
+  background: #334155;
+  border-color: #374151;
 }
 
 button.ghost {
@@ -2731,7 +2731,20 @@ button.ghost {
 
 button.danger,
 .button.danger {
-  background: var(--danger);
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  color: #fca5a5;
+  border: 1px solid color-mix(in srgb, var(--danger) 34%, transparent);
+}
+
+button.danger:hover,
+.button.danger:hover {
+  background: color-mix(in srgb, var(--danger) 25%, transparent);
+}
+
+button:focus-visible,
+.button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.3);
 }
 
 button.tiny,
@@ -2867,17 +2880,7 @@ a[aria-disabled="true"] {
 }
 
 .admin-page-header {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: space-between;
-  gap: 0.95rem;
   margin-bottom: 1.4rem;
-  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
-  background: color-mix(in srgb, var(--surface-1) 92%, transparent);
-  border-radius: 16px;
-  box-shadow: none;
-  padding: 1.35rem;
 }
 
 .admin-page-header-copy h1 {
