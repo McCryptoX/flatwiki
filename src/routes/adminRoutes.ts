@@ -175,6 +175,57 @@ const readUploadPartAsText = async (part: { file: AsyncIterable<Buffer> }): Prom
   return Buffer.concat(chunks).toString("utf8");
 };
 
+const readHeaderCsrfToken = (headers: FastifyRequest["headers"]): string => {
+  const token = headers["x-csrf-token"];
+  if (Array.isArray(token)) {
+    return String(token[0] ?? "").trim();
+  }
+  return String(token ?? "").trim();
+};
+
+export interface MultipartCsrfGuard {
+  readonly isValidated: boolean;
+  readonly isRejected: boolean;
+  consumeField(fieldname: string, value: string): boolean;
+  allowFilePart(file: { resume: () => void }): boolean;
+}
+
+export const createMultipartCsrfGuard = (input: {
+  headerToken: string;
+  verifyToken: (token: string) => boolean;
+}): MultipartCsrfGuard => {
+  const headerToken = input.headerToken.trim();
+  let validated = false;
+  let rejected = false;
+
+  if (headerToken.length > 0) {
+    validated = input.verifyToken(headerToken);
+    rejected = !validated;
+  }
+
+  return {
+    get isValidated(): boolean {
+      return validated;
+    },
+    get isRejected(): boolean {
+      return rejected;
+    },
+    consumeField(fieldname: string, value: string): boolean {
+      if (rejected || validated) return !rejected;
+      if (fieldname !== "_csrf") return true;
+      validated = input.verifyToken(value);
+      rejected = !validated;
+      return validated;
+    },
+    allowFilePart(file: { resume: () => void }): boolean {
+      if (validated && !rejected) return true;
+      file.resume();
+      rejected = true;
+      return false;
+    }
+  };
+};
+
 const buildAccessUser = async (user: PublicUser): Promise<PublicUser> => {
   if (user.role === "admin") {
     return {
@@ -2577,17 +2628,32 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
       return reply.redirect("/admin/import/wikitext?error=Bitte+Formular+als+Multipart+senden.");
     }
 
+    const csrfGuard = createMultipartCsrfGuard({
+      headerToken: readHeaderCsrfToken(request.headers),
+      verifyToken: (token) => verifySessionCsrfToken(request, token)
+    });
+    if (csrfGuard.isRejected) {
+      return reply.code(403).type("text/plain").send("Ungültiges CSRF-Token");
+    }
+
     const fields: Record<string, string> = {};
     let uploadedWikitext = "";
     let uploadedFileName = "";
     let parseError = "";
     let fileCount = 0;
 
-    for await (const part of request.parts({ limits: { files: 1, fields: 24, fileSize: 5 * 1024 * 1024 } })) {
+    for await (const part of request.parts({ limits: { files: 1, fields: 24, parts: 26, fileSize: 5 * 1024 * 1024 } })) {
       if (part.type === "field") {
         const value = typeof part.value === "string" ? part.value : String(part.value ?? "");
         fields[part.fieldname] = value;
+        if (!csrfGuard.consumeField(part.fieldname, value)) {
+          return reply.code(403).type("text/plain").send("Ungültiges CSRF-Token");
+        }
         continue;
+      }
+
+      if (!csrfGuard.allowFilePart(part.file)) {
+        return reply.code(403).type("text/plain").send("Ungültiges CSRF-Token");
       }
 
       if (part.fieldname !== "sourceFile") {
@@ -2610,8 +2676,8 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
       }
     }
 
-    if (!verifySessionCsrfToken(request, fields._csrf ?? "")) {
-      return reply.code(400).type("text/plain").send("Ungültiges CSRF-Token");
+    if (!csrfGuard.isValidated) {
+      return reply.code(403).type("text/plain").send("Ungültiges CSRF-Token");
     }
 
     if (parseError) {
@@ -3342,7 +3408,14 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
       return reply.redirect("/admin/backups?error=Es+wurde+kein+Multipart-Upload+gesendet.");
     }
 
-    let csrfToken = "";
+    const csrfGuard = createMultipartCsrfGuard({
+      headerToken: readHeaderCsrfToken(request.headers),
+      verifyToken: (token) => verifySessionCsrfToken(request, token)
+    });
+    if (csrfGuard.isRejected) {
+      return reply.code(403).type("text/plain").send("Ungültiges CSRF-Token");
+    }
+
     let passphrase = "";
     let uploaded:
       | {
@@ -3355,12 +3428,18 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
     let validationError = "";
 
     try {
-      for await (const part of request.parts({ limits: { files: 1, fields: 8, fileSize: 1024 * 1024 * 1024 } })) {
+      for await (const part of request.parts({ limits: { files: 1, fields: 8, parts: 10, fileSize: 1024 * 1024 * 1024 } })) {
         if (part.type === "field") {
           const value = typeof part.value === "string" ? part.value : String(part.value ?? "");
-          if (part.fieldname === "_csrf") csrfToken = value;
+          if (!csrfGuard.consumeField(part.fieldname, value)) {
+            return reply.code(403).type("text/plain").send("Ungültiges CSRF-Token");
+          }
           if (part.fieldname === "passphrase") passphrase = value;
           continue;
+        }
+
+        if (!csrfGuard.allowFilePart(part.file)) {
+          return reply.code(403).type("text/plain").send("Ungültiges CSRF-Token");
         }
 
         if (part.fieldname !== "backupFile") {
@@ -3401,11 +3480,11 @@ export const registerAdminRoutes = async (app: FastifyInstance): Promise<void> =
       return reply.redirect("/admin/backups?error=Upload+fehlgeschlagen.+Bitte+Datei+oder+Gr%C3%B6%C3%9Fe+pr%C3%BCfen.");
     }
 
-    if (!verifySessionCsrfToken(request, csrfToken)) {
+    if (!csrfGuard.isValidated) {
       if (uploaded) {
         await removeFile(uploaded.filePath);
       }
-      return reply.redirect("/admin/backups?error=Ung%C3%BCltiges+CSRF-Token.");
+      return reply.code(403).type("text/plain").send("Ungültiges CSRF-Token");
     }
 
     if (validationError) {

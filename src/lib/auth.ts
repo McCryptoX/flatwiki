@@ -4,7 +4,7 @@ import { config } from "../config.js";
 import { listGroupIdsForUser } from "./groupStore.js";
 import { countUnreadNotifications } from "./notificationStore.js";
 import { getPublicReadEnabled } from "./runtimeSettingsStore.js";
-import { deleteSession, getSessionById } from "./sessionStore.js";
+import { deleteSession, getSessionById, refreshSession } from "./sessionStore.js";
 import { findUserById, hasAnyUser } from "./userStore.js";
 
 const SESSION_COOKIE = "fw_sid";
@@ -41,6 +41,16 @@ const normalizeUserAgent = (value: string | undefined): string | undefined => {
   const collapsed = value.replace(/[\r\n\t]+/g, " ").trim();
   if (!collapsed) return undefined;
   return collapsed.slice(0, USER_AGENT_MAX_LENGTH);
+};
+
+const STATIC_ASSET_PATH_PATTERN = /\.(?:avif|css|gif|ico|jpe?g|js|map|png|svg|txt|webp|woff2?|xml)$/i;
+
+export const shouldRefreshSessionForRequest = (request: Pick<FastifyRequest, "url">): boolean => {
+  const pathname = String(request.url ?? "").split("?")[0] ?? "/";
+  if (!pathname || pathname.startsWith("/uploads/")) return false;
+  if (pathname.startsWith("/_homepage/")) return false;
+  if (STATIC_ASSET_PATH_PATTERN.test(pathname)) return false;
+  return true;
 };
 
 export const getRequestUserAgent = (request: FastifyRequest): string | undefined => {
@@ -125,6 +135,10 @@ export const attachCurrentUser = async (request: FastifyRequest, reply: FastifyR
   };
   request.currentSessionId = sessionId;
   request.csrfToken = session.csrfToken;
+
+  if (shouldRefreshSessionForRequest(request)) {
+    await refreshSession(sessionId).catch(() => undefined);
+  }
 };
 
 export const requireAuth = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {

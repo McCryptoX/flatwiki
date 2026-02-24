@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createLoginCsrfToken,
   requireFormCsrfToken,
+  shouldRefreshSessionForRequest,
   verifyLoginCsrfToken,
   verifySessionCsrfToken
 } from "../src/lib/auth.ts";
@@ -65,5 +66,11 @@ describe("csrf helpers", () => {
 
     expect(reply.code).not.toHaveBeenCalled();
     expect(reply.send).not.toHaveBeenCalled();
+  });
+
+  it("skips session refresh for static assets and upload files", () => {
+    expect(shouldRefreshSessionForRequest({ url: "/styles.css" } as any)).toBe(false);
+    expect(shouldRefreshSessionForRequest({ url: "/uploads/foo/bar.png" } as any)).toBe(false);
+    expect(shouldRefreshSessionForRequest({ url: "/wiki/home?x=1" } as any)).toBe(true);
   });
 });
