@@ -21,7 +21,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@fastify/cookie": "^10.0.0",
+    "@fastify/cookie": "^11.0.2",
     "@fastify/formbody": "^8.0.0",
     "@fastify/helmet": "^13.0.0",
     "@fastify/multipart": "^9.0.0",
